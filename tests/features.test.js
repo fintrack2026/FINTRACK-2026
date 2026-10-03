@@ -13,7 +13,7 @@ import { customerOwnsPurchase, paymentTotalsAfterChange } from '../src/controlle
 import { requireAdmin, requireCustomer, requireWorkspaceMember } from '../src/middleware/auth.js';
 import { summarizeCustomerMonitoring } from '../src/services/customer-account.js';
 import { summarizePayments, transactionDateRange } from '../src/services/reporting.js';
-import { customerProfileSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, managedUserSchema, productSchema, purchaseSchema } from '../src/services/validation.js';
+import { customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, managedUserSchema, productSchema, purchaseSchema } from '../src/services/validation.js';
 
 test('customer and staff workspace routes reject other account roles', () => {
     const invoke = (middleware, role) => {
@@ -164,9 +164,16 @@ test('admin account creation accepts workspace roles but not customer role assig
 test('customer profile updates validate details and one of the preset avatars', () => {
     assert.equal(customerProfileSchema.safeParse({ fullName: 'A Customer', contactNumber: '09123456789', address: 'Main Street', avatarId: 'mint' }).success, true);
     assert.equal(customerProfileSchema.safeParse({ fullName: 'A Customer', avatarId: 'berry' }).success, true);
+    assert.equal(customerProfileSchema.safeParse({ fullName: 'A Customer', contactNumber: '0912-345-6789' }).success, false);
     assert.equal(customerProfileSchema.safeParse({ fullName: 'A Customer', avatarId: 'unknown' }).success, false);
     assert.equal(customerProfileSchema.safeParse({ fullName: '' }).success, false);
     assert.equal(customerProfileSchema.safeParse({ fullName: 'A Customer', email: 'new@example.com' }).success, false);
+});
+
+test('customer signup phone numbers accept digits only', () => {
+    assert.equal(customerProvisionSchema.safeParse({ mobileNumber: '09123456789' }).success, true);
+    assert.equal(customerProvisionSchema.safeParse({ mobileNumber: '' }).success, true);
+    assert.equal(customerProvisionSchema.safeParse({ mobileNumber: '+639123456789' }).success, false);
 });
 
 test('customer expense input validates name, category, amount, date, and notes', () => {
@@ -188,6 +195,7 @@ test('customer product form fields validate a private product or service entry',
 
 test('customer-managed contacts validate independently from workspace customers', () => {
     assert.equal(customerSchema.safeParse({ customerName: 'Local Client', contactNumber: '09123456789', email: '', address: 'Main Street' }).success, true);
+    assert.equal(customerSchema.safeParse({ customerName: 'Local Client', contactNumber: '0912abc' }).success, false);
     assert.equal(customerSchema.safeParse({ customerName: '' }).success, false);
 });
 

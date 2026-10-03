@@ -163,7 +163,7 @@ function renderAuth(mode = 'customer', error = '') {
             <p>${creating ? 'Create an account to browse and purchase plans.' : admin ? 'Sign in to manage the Fintrack workspace.' : 'Sign in to view your plans and transactions.'}</p>
             ${error ? `<div class="form-error" role="alert">${escapeHtml(error)}</div>` : ''}
             <form class="auth-form" data-auth-form="${creating ? 'signup' : 'signin'}" data-portal-mode="${portalMode}">
-                ${creating ? '<div class="field"><label for="auth-name">Full name</label><input id="auth-name" name="fullName" autocomplete="name" required></div><div class="field"><label for="auth-username">Username</label><input id="auth-username" name="username" autocomplete="username" required></div><div class="field"><label for="auth-mobile">Mobile number <span class="optional-label">Optional</span></label><input id="auth-mobile" name="mobileNumber" type="tel" autocomplete="tel"></div><div class="field"><label for="auth-address">Address <span class="optional-label">Optional</span></label><input id="auth-address" name="address" autocomplete="street-address"></div>' : ''}
+                ${creating ? '<div class="field"><label for="auth-name">Full name</label><input id="auth-name" name="fullName" autocomplete="name" required></div><div class="field"><label for="auth-username">Username</label><input id="auth-username" name="username" autocomplete="username" required></div><div class="field"><label for="auth-mobile">Mobile number <span class="optional-label">Optional</span></label><input id="auth-mobile" name="mobileNumber" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="50" autocomplete="tel"></div><div class="field"><label for="auth-address">Address <span class="optional-label">Optional</span></label><input id="auth-address" name="address" autocomplete="street-address"></div>' : ''}
                 <div class="field"><label for="auth-email">Email address</label><input id="auth-email" name="email" type="email" placeholder="you@business.com" autocomplete="email" required></div>
                 <div class="field"><div class="auth-label-row"><label for="auth-password">Password</label>${creating ? '' : '<button class="text-button" type="button" data-password-reset>Forgot password?</button>'}</div><div class="password-input-wrap"><input id="auth-password" name="password" type="password" placeholder="Enter your password" autocomplete="${creating ? 'new-password' : 'current-password'}" minlength="6" required><button class="password-toggle" type="button" data-password-toggle="auth-password" aria-label="Show password" aria-pressed="false"><span class="password-eye-icon" aria-hidden="true">&#128065;&#65038;</span></button></div></div>
                 ${creating ? '<div class="field"><label for="auth-confirm-password">Confirm password</label><div class="password-input-wrap"><input id="auth-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required><button class="password-toggle" type="button" data-password-toggle="auth-confirm-password" aria-label="Show confirm password" aria-pressed="false"><span class="password-eye-icon" aria-hidden="true">&#128065;&#65038;</span></button></div></div><label class="terms-check"><input name="acceptTerms" type="checkbox" required><span>I agree to the <a href="/terms.html" target="_blank" rel="noopener noreferrer" data-terms-link>Terms and Conditions</a></span></label>' : ''}
@@ -784,7 +784,11 @@ function customerRecordBulkToolbar(collection, records) {
 
 async function openCustomerPaymentForm() {
     const purchases = (await apiFetch('/customer/purchases')).filter((purchase) => Number(purchase.balanceAmount) > 0);
-    if (!purchases.length) throw new Error('There are no outstanding purchases to pay.');
+    if (!purchases.length) {
+        notify('Create a purchase transaction first. You can record a payment after it has an outstanding balance.');
+        setView('my-purchases');
+        return openCustomerPurchaseForm();
+    }
     const options = `<option value="">Choose a purchase or transaction</option>${purchases.map((purchase) => {
         const description = (purchase.items || []).map((item) => item.productName).join(', ') || 'Purchase';
         return `<option value="${escapeHtml(purchase.id)}" data-balance="${Number(purchase.balanceAmount) || 0}">${escapeHtml(description)} · ${shortDate(purchase.purchaseDate)} · due ${money(purchase.balanceAmount)}</option>`;
@@ -843,10 +847,15 @@ async function openCustomerPurchaseForm(selectedProductId = '') {
     const plans = rawPlans.map(normalizeCustomerPlan);
     state.customerPlanData = plans;
     const activeProducts = products.filter((product) => product.status === 'active');
-    if (!activeProducts.length && !plans.length) throw new Error('There are no active products, services, or plans available.');
-    if (!contacts.length) throw new Error('Add a customer in My Customers before creating a purchase transaction.');
-    const customerOptions = `<option value="">Select customer</option>${contacts.map((contact) => `<option value="${escapeHtml(contact.id)}">${escapeHtml(contact.customerName)}</option>`).join('')}`;
+    if (!activeProducts.length && !plans.length) {
+        notify('Add a product or service first. Your transaction will open after setup.');
+        return openCustomerProductForm();
+    }
+    const customerId = state.profile?.customerId;
+    const customerName = state.profile?.customerName || state.profile?.fullName || state.user?.email || 'My account';
+    const customerOptions = `<option value="${escapeHtml(customerId || '')}">My account · ${escapeHtml(customerName)}</option>${contacts.map((contact) => `<option value="${escapeHtml(contact.id)}">${escapeHtml(contact.customerName)}</option>`).join('')}`;
     const fields = `<div class="field"><label for="customer-purchase-customer">Customer</label><select id="customer-purchase-customer" name="customerId" required>${customerOptions}</select></div>
+        <p class="field-hint">Choose your own account or one of your saved customers.</p>
         ${fieldMarkup(['purchaseDate', 'Purchase date', 'date', true], new Date().toISOString().slice(0, 10))}
         <div class="field"><span class="field-label">Purchase items</span><div class="customer-purchase-line-header"><span>Product / plan</span><span>Quantity</span><span>Line total</span><span></span></div><div class="customer-purchase-lines" data-customer-purchase-lines>${customerPurchaseLineMarkup(activeProducts, selectedProductId, plans)}</div><button class="text-button customer-purchase-add" type="button" data-action="add-customer-purchase-line">+ Add another item</button></div>
         ${fieldMarkup(['remarks', 'Remarks', 'textarea'])}
@@ -1165,7 +1174,8 @@ function fieldMarkup([name, label, type, required = false, options = []], value 
     if (type === 'textarea') return `<div class="field"><label for="field-${safeName}">${label}</label><textarea id="field-${safeName}" name="${safeName}">${safeValue}</textarea></div>`;
     if (type === 'select') return `<div class="field"><label for="field-${safeName}">${label}</label><select id="field-${safeName}" name="${safeName}" ${required ? 'required' : ''}><option value="">Select ${label.toLowerCase()}</option>${options.map((option) => `<option value="${escapeHtml(option)}" ${value === option ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select></div>`;
     const numeric = type === 'number' ? ` min="0" step="${name === 'stockQuantity' || name === 'quantity' ? '1' : '0.01'}"` : '';
-    return `<div class="field"><label for="field-${safeName}">${label}</label><input id="field-${safeName}" name="${safeName}" type="${type}" value="${safeValue}" ${required ? 'required' : ''}${numeric}></div>`;
+    const phone = type === 'tel' ? ' inputmode="numeric" pattern="[0-9]*" maxlength="50"' : '';
+    return `<div class="field"><label for="field-${safeName}">${label}</label><input id="field-${safeName}" name="${safeName}" type="${type}" value="${safeValue}" ${required ? 'required' : ''}${numeric}${phone}></div>`;
 }
 
 function optionList(rows, idField, labelField, selected = '', placeholder = 'Choose one') {
@@ -1372,7 +1382,7 @@ function renderApp() {
     document.querySelector('#account-chip').disabled = !customer;
     document.querySelector('.account-chevron').hidden = !customer;
     document.querySelector('#account-chip').setAttribute('aria-label', customer ? 'Open personal information' : `${state.profile.role || 'Staff'} account`);
-    document.querySelector('#account-name').textContent = state.profile.fullName || state.user.email;
+    document.querySelector('#account-name').textContent = (customer ? state.profile.username : state.profile.fullName) || state.profile.fullName || state.user.email;
     const accountRole = document.querySelector('#account-role');
     accountRole.hidden = customer;
     if (!customer) accountRole.textContent = state.profile.role || 'staff';
@@ -1447,7 +1457,9 @@ document.addEventListener('submit', async (event) => {
                 profileProvisioning = new Promise((resolve) => { finishProvisioning = resolve; });
                 try {
                     const credential = await createUserWithEmailAndPassword(auth, values.get('email'), values.get('password'));
-                    const profile = await loadCustomerProfile(credential.user, { fullName: String(values.get('fullName')).trim(), username: String(values.get('username')).trim(), mobileNumber: String(values.get('mobileNumber') || '').trim(), address: String(values.get('address') || '').trim(), acceptedTerms: true }, true);
+                    const details = { fullName: String(values.get('fullName')).trim(), username: String(values.get('username')).trim(), mobileNumber: String(values.get('mobileNumber') || '').trim(), address: String(values.get('address') || '').trim(), acceptedTerms: true };
+                    await loadCustomerProfile(credential.user, details, true);
+                    const profile = await loadCustomerProfile(credential.user, details);
                     finishProvisioning(profile);
                 } finally {
                     finishProvisioning(null);
@@ -1463,7 +1475,7 @@ document.addEventListener('submit', async (event) => {
             closeModal();
             if (view === 'customer-profile') {
                 state.profile = { ...state.profile, ...savedRecord };
-                document.querySelector('#account-name').textContent = state.profile.fullName || state.user.email;
+                document.querySelector('#account-name').textContent = (state.profile.role === 'customer' ? state.profile.username : state.profile.fullName) || state.profile.fullName || state.user.email;
                 updateAvatar(document.querySelector('#account-avatar'));
                 notify('Profile updated.');
                 return setView('customer-profile');
@@ -1773,6 +1785,14 @@ for (const eventName of ['pointerup', 'pointercancel']) {
 }
 
 document.addEventListener('input', (event) => {
+    if (event.target.matches('input[type="tel"]')) {
+        const input = event.target;
+        const start = input.selectionStart;
+        const digitsBeforeCursor = input.value.slice(0, start ?? input.value.length).replace(/\D/g, '').length;
+        input.value = input.value.replace(/\D/g, '');
+        const cursor = Math.min(digitsBeforeCursor, input.value.length);
+        input.setSelectionRange(cursor, cursor);
+    }
     if (event.target.id === 'customer-record-search') {
         state.customerRecordSearch = event.target.value;
         renderCustomerRecords(state.customerRecordFilter, false, state.customerCalendarPeriod, state.customerCalendarDate, true).catch((error) => notify(error.message, true));

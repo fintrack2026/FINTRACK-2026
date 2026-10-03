@@ -3,7 +3,7 @@ import { purchaseReceiptPdf, purchaseWithProcessorName, removePurchaseRecord } f
 import { customerOwnsPurchase, paymentTotalsAfterChange, paymentWithProcessorName } from './payments.js';
 import { ensureCustomerAccountProfile } from '../services/customer-account.js';
 import { transactionDateRange } from '../services/reporting.js';
-import { customerPlanSchema, customerPlanStateSchema, customerProductStatusSchema, customerProfileSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, idSchema, parse, paymentSchema, productSchema, purchaseSchema } from '../services/validation.js';
+import { customerPlanSchema, customerPlanStateSchema, customerProductStatusSchema, customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, idSchema, parse, paymentSchema, productSchema, purchaseSchema } from '../services/validation.js';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const rows = (snapshot) => snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
@@ -30,7 +30,8 @@ export function customerOwnsExpenseRecord(userId, expense) {
 
 export async function provisionCustomerAccount(req, res, next) {
     try {
-        const profile = await ensureCustomerAccountProfile(req.user, req.body || {});
+        const details = parse(customerProvisionSchema, req.body || {});
+        const profile = await ensureCustomerAccountProfile(req.user, details);
         res.status(201).json(profile);
     } catch (error) { next(error); }
 }
@@ -92,7 +93,7 @@ export async function ensureCustomerProfile(req, res, next) {
             await profileReference.update({ customerId: customer.id });
         }
 
-        res.json({ id: req.user.uid, fullName: profile.fullName, email: profile.email, role: profile.role, customerId: customer.id, customerName: customer.customerName, contactNumber: customer.contactNumber || '', address: customer.address || '', avatarId: profile.avatarId || 'mint' });
+        res.json({ id: req.user.uid, fullName: profile.fullName, username: profile.username || '', email: profile.email, role: profile.role, customerId: customer.id, customerName: customer.customerName, contactNumber: customer.contactNumber || '', address: customer.address || '', avatarId: profile.avatarId || 'mint' });
     } catch (error) { next(error); }
 }
 
