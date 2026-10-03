@@ -6,7 +6,7 @@ import { expenseCategories, expenses } from '../public/assets/js/features/expens
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from '../public/assets/js/features/payments.js';
 import { products } from '../public/assets/js/features/products.js';
 import { purchases } from '../public/assets/js/features/purchases.js';
-import { customerOwnsContact, purchaseReceiptPdf } from '../src/controllers/purchases.js';
+import { customerOwnsContact, purchaseReceiptPdf, purchaseStockItems } from '../src/controllers/purchases.js';
 import { customerOwnsExpenseRecord, customerOwnsPaymentRecord, customerOwnsPurchaseRecord } from '../src/controllers/customer-portal.js';
 import { renderReports } from '../public/assets/js/features/reports.js';
 import { customerOwnsPurchase, paymentTotalsAfterChange } from '../src/controllers/payments.js';
@@ -186,6 +186,21 @@ test('customer payment can only update a purchase linked to their account', () =
     assert.equal(customerOwnsPurchase(req, { customerId: 'customer-1' }, { accountId: 'user-1' }), true);
     assert.equal(customerOwnsPurchase(req, { customerId: 'customer-2' }, { accountId: 'user-1' }), false);
     assert.equal(customerOwnsPurchase(req, { customerId: 'customer-1' }, { accountId: 'user-2' }), false);
+});
+
+test('purchase deletion restores only inventory-backed products from the correct catalog', () => {
+    assert.deepEqual(purchaseStockItems([
+        { productId: 'workspace-1', itemType: 'product', quantity: 2 },
+        { productId: 'workspace-1', itemType: 'product', quantity: 3 },
+        { productId: 'legacy-workspace-1', quantity: 1 },
+        { productId: 'customer-1', itemType: 'customer-product', quantity: 4 },
+        { productId: 'plan-1', itemType: 'plan', quantity: 1 },
+        { productId: 'service-1', itemType: 'service', quantity: 1 }
+    ]), [
+        { collection: 'products', productId: 'workspace-1', quantity: 5 },
+        { collection: 'products', productId: 'legacy-workspace-1', quantity: 1 },
+        { collection: 'customerProducts', productId: 'customer-1', quantity: 4 }
+    ]);
 });
 
 test('customer product form fields validate a private product or service entry', () => {

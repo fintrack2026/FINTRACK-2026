@@ -12,6 +12,22 @@ export function customerOwnsContact(userId, contact) {
     return Boolean(userId && contact?.userId === userId);
 }
 
+export function purchaseStockItems(items = []) {
+    const quantities = new Map();
+    for (const item of items) {
+        if (!item.productId || item.itemType === 'plan' || item.itemType === 'service') continue;
+        const collection = item.itemType === 'customer-product' ? 'customerProducts' : 'products';
+        const key = `${collection}:${item.productId}`;
+        const previous = quantities.get(key);
+        quantities.set(key, {
+            collection,
+            productId: item.productId,
+            quantity: (previous?.quantity || 0) + Number(item.quantity || 0)
+        });
+    }
+    return [...quantities.values()];
+}
+
 export async function purchaseWithProcessorName(purchase, fallbackName = '') {
     if (purchase.processedBy) return purchase;
     if (!purchase.userId) return { ...purchase, processedBy: fallbackName || '—' };
@@ -242,22 +258,22 @@ export async function removePurchaseRecord(id) {
         const payments = await transaction.get(firestore.collection('payments').where('purchaseId', '==', id));
         if (!payments.empty) fail('Delete linked payments before deleting this purchase.', 409);
 
-        const quantities = new Map();
-        for (const item of purchaseSnapshot.data().items || []) {
-            quantities.set(item.productId, (quantities.get(item.productId) || 0) + Number(item.quantity || 0));
-        }
+        const purchase = purchaseSnapshot.data();
         const stockChanges = [];
-        for (const [productId, quantity] of quantities) {
-            const productReference = firestore.collection('products').doc(productId);
+        for (const { collection, productId, quantity } of purchaseStockItems(purchase.items)) {
+            const productReference = firestore.collection(collection).doc(productId);
             const productSnapshot = await transaction.get(productReference);
-            if (!productSnapshot.exists) fail('A product in this purchase no longer exists.', 409);
-            if (productSnapshot.data().type === 'product') {
-                stockChanges.push({ reference: productReference, stockQuantity: Number(productSnapshot.data().stockQuantity || 0) + quantity });
+            if (!productSnapshot.exists) continue;
+            const product = productSnapshot.data();
+            if (collection === 'customerProducts' && product.userId !== purchase.userId) {
+                fail('A product in this purchase is not owned by its customer account.', 409);
             }
+            if (product.type === 'product') stockChanges.push({ reference: productReference, stockQuantity: Number(product.stockQuantity || 0) + quantity });
         }
         for (const change of stockChanges) transaction.update(change.reference, { stockQuantity: change.stockQuantity, updatedAt: timestamp() });
         transaction.delete(purchaseReference);
     });
+    if ((await purchaseReference.get()).exists) fail('Purchase deletion could not be confirmed. Please refresh and try again.', 500);
 }
 
 export async function deletePurchase(req, res, next) {

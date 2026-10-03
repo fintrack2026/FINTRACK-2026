@@ -1603,6 +1603,13 @@ document.addEventListener('click', async (event) => {
                     }
                 }
                 for (const selectedId of selectedIds) await apiFetch(`/customer/${route}/${selectedId}`, { method: 'DELETE' });
+                if (kind === 'purchases') {
+                    const remaining = await apiFetch('/customer/purchases');
+                    if (selectedIds.some((purchaseId) => remaining.some((purchase) => purchase.id === purchaseId))) {
+                        throw new Error('One or more purchases still appear in your records. Refresh and try again; deletion was not confirmed.');
+                    }
+                    state.customerPurchaseRows = remaining;
+                }
                 state.recordSelection = { collection: name, ids: new Set() };
                 notify(`${selectedIds.length} records deleted.`);
                 return setView({ purchases: 'my-purchases', payments: 'customer-payments', expenses: 'customer-expenses' }[kind]);
@@ -1615,6 +1622,12 @@ document.addEventListener('click', async (event) => {
                 }
             }
             for (const selectedId of selectedIds) await deleteRecord(name, selectedId);
+            if (name === 'purchases') {
+                state.records.purchases = await apiFetch('/purchases');
+                if (selectedIds.some((purchaseId) => state.records.purchases.some((purchase) => purchase.id === purchaseId))) {
+                    throw new Error('One or more purchases still appear in your records. Refresh and try again; deletion was not confirmed.');
+                }
+            }
             state.recordSelection = { collection: name, ids: new Set() };
             notify(`${selectedIds.length} ${name} records deleted.`);
             return renderCollectionView(name);
@@ -1689,6 +1702,12 @@ document.addEventListener('click', async (event) => {
             const kind = actionButton.dataset.kind;
             if (!window.confirm('Delete this record? This cannot be undone.')) return;
             await apiFetch(`/customer/${kind}/${id}`, { method: 'DELETE' });
+            if (kind === 'purchases') {
+                state.customerPurchaseRows = await apiFetch('/customer/purchases');
+                if (state.customerPurchaseRows.some((purchase) => purchase.id === id)) {
+                    throw new Error('The purchase still appears in your records. Refresh and try again; it was not confirmed as deleted.');
+                }
+            }
             notify('Record deleted.');
             return setView({ purchases: 'my-purchases', payments: 'customer-payments', expenses: 'customer-expenses' }[kind]);
         }
@@ -1735,8 +1754,14 @@ document.addEventListener('click', async (event) => {
         if (action === 'delete') {
             if (!window.confirm('Delete this record?')) return;
             await deleteRecord(name, id);
+            if (name === 'purchases') {
+                state.records.purchases = await apiFetch('/purchases');
+                if (state.records.purchases.some((purchase) => purchase.id === id)) {
+                    throw new Error('The purchase still appears in your records. Refresh and try again; it was not confirmed as deleted.');
+                }
+            }
             notify('Record deleted.');
-            return renderCollectionView(name);
+            return renderCollectionView(name, '', { refresh: name !== 'purchases' });
         }
         if (action === 'purchase-view') return showPurchase(id);
         if (action === 'purchase-receipt') return showPurchaseReceipt(id);
