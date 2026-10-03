@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f4f6f3">
+    <title>Fintrack | Customer access</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/firebase-app.css?v=20261001-product-actions">
+</head>
+<body>
+    <div id="auth-screen" class="auth-screen"></div>
+
+    <div id="app-screen" class="app-shell" hidden>
+        <aside class="sidebar" id="app-sidebar">
+            <a class="brand" href="#dashboard" aria-label="Fintrack dashboard">
+                <img class="brand-mark" src="images/fintrack-mark.svg" alt="">
+                <span>FINTRACK</span>
+            </a>
+            <p class="nav-label workspace-only" id="workspace-nav-label">WORKSPACE</p>
+            <p class="nav-label admin-only" id="admin-nav-label" hidden>SYSTEM ADMINISTRATION</p>
+            <p class="nav-label customer-only" hidden>YOUR ACCOUNT</p>
+            <nav class="nav-list" id="app-navigation" aria-label="Main navigation">
+                <button class="nav-item workspace-only is-active" data-view="dashboard"><span class="nav-icon">▦</span>Dashboard</button>
+                <button class="nav-item admin-only" data-view="dashboard" hidden><span class="nav-icon">▦</span>Dashboard</button>
+                <button class="nav-item workspace-only" data-view="customers"><span class="nav-icon">◉</span>Customers</button>
+                <button class="nav-item workspace-only" data-view="products"><span class="nav-icon">▤</span>Products & services</button>
+                <button class="nav-item workspace-only" data-view="purchases"><span class="nav-icon">↗</span>Purchase Transactions</button>
+                <button class="nav-item workspace-only" data-view="payments"><span class="nav-icon">₱</span>Payments</button>
+                <button class="nav-item workspace-only" data-view="expenses"><span class="nav-icon">↘</span>Expenses</button>
+                <button class="nav-item workspace-only" data-view="reports"><span class="nav-icon">▥</span>Reports</button>
+                <button class="nav-item admin-only" data-view="users" hidden><span class="nav-icon">♙</span>User Management</button>
+                <button class="nav-item workspace-only admin-only" data-view="customer-accounts" hidden><span class="nav-icon">◉</span>Customer accounts</button>
+                <button class="nav-item customer-only" data-view="customer-dashboard" hidden><span class="nav-icon">▦</span>Overview</button>
+                <div class="customer-nav-group customer-only" hidden>
+                    <p class="customer-nav-label">PURCHASES &amp; PAYMENTS</p>
+                    <button class="nav-item" data-view="catalog"><span class="nav-icon">▤</span>My plan purchase</button>
+                    <button class="nav-item" data-view="my-purchases"><span class="nav-icon">↗</span>Purchase Transactions</button>
+                    <button class="nav-item" data-view="customer-payments"><span class="nav-icon">₱</span>Payments</button>
+                </div>
+                <div class="customer-nav-group customer-only" hidden>
+                    <p class="customer-nav-label">MY RECORDS</p>
+                    <button class="nav-item" data-view="customer-expenses"><span class="nav-icon">↘</span>My expenses</button>
+                    <button class="nav-item" data-view="customer-payment-report"><span class="nav-icon">▥</span>Payment summary</button>
+                    <button class="nav-item" data-view="customer-records"><span class="nav-icon">▥</span>All records</button>
+                </div>
+                <div class="customer-nav-group customer-only" hidden>
+                    <p class="customer-nav-label">MANAGEMENT</p>
+                    <button class="nav-item" data-view="customer-contacts"><span class="nav-icon">◉</span>My customers</button>
+                </div>
+            </nav>
+            <div class="sidebar-bottom">
+                <div class="connection-status"><span class="status-dot"></span><span>Checking server…</span></div>
+                <button id="sign-out" class="sign-out">Sign out <span aria-hidden="true">↗</span></button>
+            </div>
+        </aside>
+        <button id="mobile-nav-backdrop" class="mobile-nav-backdrop" type="button" aria-label="Close navigation" hidden></button>
+
+        <main class="main-area">
+            <header class="topbar">
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" type="button" aria-label="Open navigation" aria-controls="app-navigation" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+            <div class="topbar-title">
+                    <p class="eyebrow">FINTRACK / <span id="section-name">OVERVIEW</span></p>
+                    <h1 id="page-title">Business overview</h1>
+                </div>
+                <button id="account-chip" class="account-chip" type="button" data-view="customer-profile" aria-label="Open personal information">
+                    <span id="account-avatar" class="avatar">F</span>
+                    <span><strong id="account-name">Account</strong><small id="account-role">Staff</small></span>
+                    <span class="account-chevron" aria-hidden="true">↗</span>
+                </button>
+            </header>
+            <section id="view-container" class="view-container" aria-live="polite"></section>
+        </main>
+    </div>
+
+    <div id="modal-root"></div>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+    <script type="importmap">
+        {
+            "imports": {
+                "firebase/app": "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js",
+                "firebase/auth": "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js",
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js",
+                "firebase/storage": "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js"
+            }
+        }
+    </script>
+    <script src="assets/js/vendor/chart.umd.js"></script>
+    <script type="module" src="assets/js/main.js?v=20261001-registered-user-columns"></script>
+</body>
+</html>

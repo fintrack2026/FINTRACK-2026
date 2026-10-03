@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /customers/{customerUid}/profile.jpg {
+      allow read: if request.auth != null && request.auth.uid == customerUid;
+      allow create, update: if request.auth != null
+        && request.auth.uid == customerUid
+        && request.resource.size <= 512 * 1024
+        && request.resource.contentType == 'image/jpeg';
+      allow delete: if request.auth != null && request.auth.uid == customerUid;
+    }
+  }
+}

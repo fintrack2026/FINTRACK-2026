@@ -1,0 +1,56 @@
+{
+  "functions": {
+    "source": ".",
+    "codebase": "fintrack-api",
+    "runtime": "nodejs20",
+    "ignore": [
+      "**/node_modules/**",
+      ".git",
+      ".firebaserc",
+      ".env",
+      "**/.env",
+      "public/assets/**",
+      "public/index.html",
+      "public/terms.html",
+      "assets/**",
+      "tests/**",
+      "README.md",
+      "FIREBASE_SETUP.md",
+      "firestore.rules",
+      "firestore.indexes.json",
+      "storage.rules",
+      "firebase-debug.log",
+      "firebase-debug.*.log"
+    ]
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": {
+          "functionId": "api",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
