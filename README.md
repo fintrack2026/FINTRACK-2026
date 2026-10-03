@@ -122,10 +122,6 @@ Select the account chip at the top of the page to open personal information. The
 
 Phone number fields accept digits only. Mobile number and address are optional during sign-up.
 
-## Staff workspace guide
-
-Staff use the business workspace to manage shared business records. Use the sidebar to move between sections. Lists provide row actions for supported edits/deletes; confirmation prompts appear before destructive actions. A record that is linked to another record may not be deletable until the dependent record is removed.
-
 ### Dashboard
 
 The dashboard summarizes sales, outstanding receivables, customer/account linkage counts, and expenses. It also shows six-month sales, payment, and expense charts, payment-method totals, recent purchases, and payments collected this month.
