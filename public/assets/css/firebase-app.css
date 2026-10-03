@@ -619,6 +619,26 @@ button.payment-method-card { cursor: pointer; }
     .purchase-transactions-table tbody td:last-child::before { margin: 0; }
     .purchase-transactions-table tbody td:last-child .row-actions { display: flex; grid-column: 2; flex-wrap: nowrap; justify-content: flex-end; gap: 4px; }
     .purchase-transactions-table tbody td:last-child .row-actions .small-button { flex: 0 0 30px; }
+    .customer-mobile-cards { display: block; width: 100%; min-width: 0; table-layout: auto; white-space: normal; }
+    .customer-mobile-cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .customer-mobile-cards tbody { display: grid; width: 100%; gap: 9px; padding: 9px; }
+    .customer-mobile-cards tbody tr { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 6px 11px; border: 1px solid var(--line); border-radius: 6px; }
+    .customer-mobile-cards tbody td { position: relative; display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(88px, 36%) minmax(0, 1fr); align-items: start; gap: 6px 10px; padding: 9px 0; border-bottom: 1px solid rgba(143, 164, 188, .12); text-align: right; white-space: normal; overflow-wrap: anywhere; }
+    .customer-mobile-cards tbody td::before { grid-column: 1; color: var(--muted); content: attr(data-label); font-size: 10px; text-align: left; }
+    .customer-mobile-cards tbody td:last-child { grid-column: 1 / -1; align-items: center; border-bottom: 0; }
+    .customer-mobile-cards tbody td:last-child .row-actions { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+    .customer-mobile-cards .record-row-select { position: absolute; top: 9px; right: 0; margin: 0; }
+    .customer-mobile-cards tbody td:first-child .record-row-select + span { grid-column: 2; padding-right: 22px; }
+    .customer-products-table tbody td:first-child > strong,
+    .customer-products-table tbody td:first-child > .record-detail { grid-column: 2; }
+    .customer-products-table .record-detail { text-align: right; overflow-wrap: anywhere; }
+    .customer-plans-table { min-width: 0; }
+    .customer-plans-table .plan-items-preview { min-width: 0; }
+    .customer-plans-table .plan-items-preview-head,
+    .customer-plans-table .plan-items-preview-row { grid-template-columns: minmax(0, 1fr) 26px minmax(0, .75fr) minmax(0, .75fr); gap: 4px; }
+    .customer-plans-table .plan-items-preview-row { overflow-wrap: anywhere; }
+    .customer-plans-table .plan-items-preview-row > span:not(:first-child),
+    .customer-plans-table .plan-items-preview-row strong { font-size: 9px; }
     .customer-contact-overview { min-height: 110px; padding: 16px; }
     .customer-contact-overview-note { display: none; }
     .transaction-filters { width: 100%; display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
