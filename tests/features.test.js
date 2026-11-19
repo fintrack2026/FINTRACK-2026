@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { customers } from '../public/assets/js/features/customers.js';
 import { filterRecordsByCalendar } from '../public/assets/js/features/calendar-filter.js';
+import { customerExpenseEntries, customerExpenseSummary, filterRecordsByDateRange, monthlyPaidExpenseTotals } from '../public/assets/js/features/customer-expenses.js';
 import { expenseCategories, expenses } from '../public/assets/js/features/expenses.js';
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from '../public/assets/js/features/payments.js';
 import { products } from '../public/assets/js/features/products.js';
@@ -12,7 +13,7 @@ import { renderReports } from '../public/assets/js/features/reports.js';
 import { customerOwnsPurchase, paymentTotalsAfterChange } from '../src/controllers/payments.js';
 import { requireAdmin, requireCustomer, requireWorkspaceMember } from '../src/middleware/auth.js';
 import { summarizeCustomerMonitoring } from '../src/services/customer-account.js';
-import { summarizePayments, transactionDateRange } from '../src/services/reporting.js';
+import { normalizeDateRange, summarizePayments, transactionDateRange } from '../src/services/reporting.js';
 import { customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, managedUserSchema, productSchema, purchaseSchema } from '../src/services/validation.js';
 
 test('customer and staff workspace routes reject other account roles', () => {
@@ -243,6 +244,13 @@ test('transaction calendar ranges support selected days, Monday weeks, months, a
     assert.throws(() => transactionDateRange('day', '2026-02-29'), { status: 400 });
 });
 
+test('date range filters accept optional endpoints and reject invalid ranges', () => {
+    assert.deepEqual(normalizeDateRange('2026-09-01', '2026-09-30'), { from: '2026-09-01', to: '2026-09-30' });
+    assert.deepEqual(normalizeDateRange('', '2026-09-30'), { from: '', to: '2026-09-30' });
+    assert.throws(() => normalizeDateRange('2026-10-01', '2026-09-30'), { status: 400 });
+    assert.throws(() => normalizeDateRange('2026-02-29', ''), { status: 400 });
+});
+
 test('customer record calendar filter matches selected day, week, or month', () => {
     const records = [
         { purchaseDate: '2026-10-01' },
@@ -254,6 +262,39 @@ test('customer record calendar filter matches selected day, week, or month', () 
     assert.deepEqual(filterRecordsByCalendar(records, 'purchaseDate', 'week', '2026-10-01'), [records[0], records[1], records[2]]);
     assert.deepEqual(filterRecordsByCalendar(records, 'purchaseDate', 'month', '2026-10-01'), [records[0], records[2]]);
     assert.deepEqual(filterRecordsByCalendar(records, 'purchaseDate', 'year', '2026-10-01'), [records[0], records[1], records[2]]);
+});
+
+test('customer expenses include purchases and payments while totals exclude unpaid balances', () => {
+    const purchases = [
+        { id: 'purchase-1', purchaseDate: '2026-10-01', totalAmount: 40, amountPaid: 25, balanceAmount: 999, paymentStatus: 'partial' },
+        { id: 'purchase-2', purchaseDate: '2026-10-02', totalAmount: 40, amountPaid: 0, balanceAmount: 40, paymentStatus: 'unpaid' },
+        { id: 'purchase-3', purchaseDate: '2026-10-01', items: [{ productName: 'Plan' }], totalAmount: 70, amountPaid: 70, balanceAmount: 0, paymentStatus: 'paid' }
+    ];
+    const payments = [
+        { id: 'payment-1', purchaseId: 'purchase-1', paymentDate: '2026-10-03', amount: 25 },
+        { id: 'payment-2', purchaseId: 'purchase-3', paymentDate: '2026-10-05', amount: 20 },
+        { id: 'payment-3', purchaseId: 'purchase-3', paymentDate: '2026-10-06', amount: 50 }
+    ];
+    const expenses = [{ id: 'expense-1', expenseDate: '2026-10-04', amount: 10 }];
+
+    const entries = customerExpenseEntries(purchases, payments, expenses);
+    assert.deepEqual(customerExpenseSummary(purchases, payments, expenses), { paid: 105, unpaid: 55, totalExpenses: 105 });
+    assert.deepEqual(entries.map(({ sourceType }) => sourceType), ['payment', 'expense', 'purchase', 'purchase']);
+    assert.deepEqual(entries.filter(({ sourceId }) => sourceId === 'purchase-1').map(({ sourceType, paid, unpaid }) => ({ sourceType, paid, unpaid })), [
+        { sourceType: 'purchase', paid: 25, unpaid: 15 }
+    ]);
+    assert.deepEqual(entries.filter(({ sourceId }) => sourceId === 'purchase-3').map(({ sourceType, date, paid, unpaid }) => ({ sourceType, date, paid, unpaid })), [
+        { sourceType: 'payment', date: '2026-10-06', paid: 70, unpaid: 0 }
+    ]);
+    assert.deepEqual(filterRecordsByDateRange(entries, 'date', '2026-10-02', '2026-10-03').map(({ id }) => id), ['purchase:purchase-1', 'purchase:purchase-2']);
+});
+
+test('monthly paid expenses follow payment and manual expense dates', () => {
+    assert.deepEqual(monthlyPaidExpenseTotals(
+        [{ paymentDate: '2026-09-30', amount: 12 }, { paymentDate: '2026-10-01', amount: 8 }],
+        [{ expenseDate: '2026-10-02', amount: 5 }],
+        [{ key: '2026-09' }, { key: '2026-10' }]
+    ), [12, 13]);
 });
 
 test('customer purchase transactions can only use contacts owned by the account', () => {

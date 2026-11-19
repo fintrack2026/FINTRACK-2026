@@ -43,3 +43,20 @@ export function transactionDateRange(period, anchorDate) {
         to: new Date(endExclusive.valueOf() - 86400000).toISOString().slice(0, 10)
     };
 }
+
+export function normalizeDateRange(from = '', to = '') {
+    const start = String(from || '');
+    const end = String(to || '');
+    const validDate = (value) => {
+        if (!value) return true;
+        const date = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+    };
+    if (!validDate(start) || !validDate(end)) {
+        throw Object.assign(new Error('Choose valid start and end dates.'), { status: 400 });
+    }
+    if (start && end && start > end) {
+        throw Object.assign(new Error('The start date must be on or before the end date.'), { status: 400 });
+    }
+    return { from: start, to: end };
+}

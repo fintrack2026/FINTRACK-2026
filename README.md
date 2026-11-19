@@ -6,7 +6,7 @@ FinTrack is a web app for tracking customers, products and services, purchase tr
 
 - [Roles and access](#roles-and-access)
 - [Get started](#get-started)
-- [Customer guide](#customer-guide)
+- [User account guide](#user-account-guide)
 - [Staff workspace guide](#staff-workspace-guide)
 - [Main admin guide](#main-admin-guide)
 - [How records and balances work](#how-records-and-balances-work)
@@ -18,7 +18,7 @@ FinTrack is a web app for tracking customers, products and services, purchase tr
 
 | Role | Sign-in choice | What the role can do |
 | --- | --- | --- |
-| Customer | Customer access | Manage the customer's own products, plans, contacts, purchase transactions, payments, expenses, and profile. Customer records are private to that account. |
+| User (customer role) | User access | Manage the user's plans, purchase transactions, payments, expenses, and profile. User records are private to that account. |
 | Staff | Login as Admin | Use the business workspace to manage shared customers, products, purchase transactions, payments, expenses, dashboard, and reports. Staff cannot manage registered accounts. |
 | Main admin | Login as Admin | Use the system administration dashboard and User Management to review registered accounts, inspect account details, deactivate/reactivate accounts, or delete accounts. The main admin is not a business-workspace account. |
 
@@ -54,44 +54,41 @@ Requirements: Node.js 20 or newer and a Firebase project.
 
 For automatic server restarts while developing, use `npm run dev`. Serving only the static frontend is not enough: the app also needs the authenticated Express API and Firebase Admin credentials.
 
-## Customer guide
+## User account guide
 
 Customer data is scoped to the signed-in account. A customer's products, plans, contacts, purchases, payments, and expenses do not become part of the shared staff workspace catalog or reports.
 
 ### Overview
 
-**Overview** summarizes the customer's purchase totals, recorded payments, expenses, and remaining balances. Charts show recent activity and the paid-versus-outstanding balance. The payment reminder lists purchases with a remaining balance, and recent purchases are shown below.
+**User Overview** shows the combined allocated budget of active plans and a single line chart of monthly paid expenses. Its summary separates Paid, Unpaid, and Total Expenses: unpaid balances are excluded from expenses, and partial payments count only for the amount actually paid. The payment reminder lists purchases with a remaining balance.
 
 ### My plan purchase
 
-This is the customer's personal product/service list and purchase-plan planner; it is not the staff workspace catalog.
+This is the customer's personal purchase-plan planner; it is not the staff workspace catalog.
 
 1. Open **My plan purchase**.
-2. Use **Add Product** to save a product or service with its name, category, type, price, stock (for products), and active/inactive status.
-3. Use **Add Plan** to create a named plan with a date, budget, and one or more items with quantities and estimated prices.
-4. Use the **All**, **Products & services**, and **Plans** filters to switch the list shown.
-5. Edit or delete a saved item using its row actions. Products and plans can be marked active/inactive. Inactive items cannot be selected for new purchases. A product already used in a purchase cannot be deleted; mark it inactive instead.
+2. Select **Add Plan** to create a named plan with a date, allocated budget, and one or more items with quantities and estimated prices.
+3. Review the saved plans, including estimated items, allocated budgets, remaining amounts, and budget status.
+4. Edit or delete a plan using its row actions. Plans can be marked active/inactive. Inactive plans cannot be selected for new purchases.
 
 When a plan is selected in a purchase, its item prices can be recorded as actual amounts and compared with the plan's estimate and budget.
 
-### My customers
+### Help Center
 
-Use **My customers** to save contacts that the customer manages, separate from the customer's own account. Add a contact with a name and optional phone, email, and address; use the search field to find contacts later. Edit or delete a contact from its row. A contact cannot be deleted while it is used by one of the account's purchase transactions.
-
-Contacts are optional when creating a purchase: the customer can select **My account** as the purchaser instead.
+The **Help Center** provides in-app tutorials for creating a plan, recording a purchase or payment, and reviewing date-filtered records.
 
 ### Purchase Transactions
 
 1. Open **Purchase Transactions** and choose **Create transaction**.
-2. Choose **My account** or one of the customer's saved contacts.
+2. The signed-in user's account name is selected automatically as the purchaser.
 3. Set the purchase date.
 4. Choose one or more active products, services, or plans; enter a quantity for each. Use **Add another item** for more lines.
 5. For a plan, review or change the actual prices for included items.
 6. Review the calculated total, add optional remarks, and choose **Create transaction**.
 
-The transaction appears in the purchase list with its total, amount paid, remaining balance, payment status, and date. The list can be narrowed by calendar period and searched. Open a row's item view or receipt actions to inspect the transaction; the receipt can be opened or printed. Transactions created by the account can be edited or deleted. A purchase with linked payments must have those payments deleted first.
+The transaction appears in the purchase list with its total, amount paid, remaining balance, payment status, and date. Purchases are also automatically listed in **My expenses**. Use the **From** and **To** fields to filter by a date range and search to find a transaction. Open a row's item view or receipt actions to inspect the transaction; the receipt can be opened or printed. Transactions created by the account can be edited or deleted. A purchase with linked payments must have those payments deleted first.
 
-To create the first transaction, add at least one active product/service or plan under **My plan purchase**. No saved contact is required if **My account** is selected.
+To create the first transaction, create at least one plan under **My plan purchase**. The signed-in user's account is automatically selected for the transaction.
 
 ### Payments
 
@@ -102,19 +99,19 @@ To create the first transaction, add at least one active product/service or plan
 
 The payment updates the purchase balance and status. Available methods are **Cash**, **Bank Transfer**, **GCash**, and **Others**. FinTrack records the method; it does not process a bank, GCash, or card charge.
 
-The payment list has a calendar filter and displays the related transaction and payment details. The account can edit or delete its own payments; the related purchase balance is recalculated. A payment cannot be recorded without an unpaid or partially paid purchase. If there is no purchase with a balance, create a purchase first.
+The payment list has **From** and **To** date filters and displays the related transaction and payment details. Payments are also automatically listed in **My expenses**. The account can edit or delete its own payments; the related purchase balance is recalculated. A payment cannot be recorded without an unpaid or partially paid purchase. If there is no purchase with a balance, create a purchase first.
 
 ### My expenses
 
-Choose **Add expense** to enter an expense name, category, amount, date, optional payment method, and notes. Expenses can be filtered by day, week, month, or year. The account can edit or delete its own expenses.
+Purchase transactions, payments, and any separate manually recorded expenses appear here automatically. Each purchase is shown only once: unpaid or partially paid purchases appear as **Purchase**, and fully paid purchases appear as **Payment** with the total amount paid. Partial payments are included in the Purchase row's paid amount and do not create duplicate rows. There is no need to re-enter a purchase or payment. Choose **Add expense** only for other costs, such as supplies or utilities. Use **From** and **To** to filter by date range; manually added expenses can be edited or deleted.
 
 ### Payment summary
 
-**Payment summary** groups the customer's recorded payments by payment method. Use the date filter to view a day, week, month, or year.
+**Payment summary** groups the customer's recorded payments by payment method. Use **From** and **To** to select a date range.
 
 ### All records
 
-**All records** combines the account's purchases, payments, and expenses into a date-filtered view. Tabs let the customer show all records, only purchases, only payments, only expenses, or outstanding balances. Search and the calendar filter help locate records; available row actions depend on record ownership and type.
+**All records** combines the account's purchases, payments, and expenses into a date-filtered view, with one row per purchase transaction. Unpaid or partially paid purchases appear as **Purchase**; fully paid purchases appear as **Payment** and replace the Purchase entry. Tabs let the customer show all records, only purchases, only payments, only expenses, or outstanding balances. Search and the **From** and **To** date range help locate records; available row actions depend on record ownership and type.
 
 ### Personal information
 

@@ -1,7 +1,7 @@
 import { createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { auth, db } from './firebase.js';
 import { customers } from './features/customers.js';
-import { calendarDateRange, filterRecordsByCalendar } from './features/calendar-filter.js';
+import { customerExpenseEntries, customerExpenseSummary, filterRecordsByDateRange, monthlyPaidExpenseTotals, purchaseUnpaidAmount } from './features/customer-expenses.js';
 import { expenseCategories, expenses } from './features/expenses.js';
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from './features/payments.js';
 import { products } from './features/products.js';
@@ -29,7 +29,8 @@ const actionIconObserver = new MutationObserver(() => {
 });
 actionIconObserver.observe(viewContainer, { childList: true, subtree: true });
 
-const state = { user: null, profile: null, view: 'dashboard', records: {}, customerProductData: [], customerPlanData: [], customerCatalogFilter: 'all', customerRecordData: null, customerPurchaseRows: null, customerContacts: [], customerAccounts: [], registeredUsers: null, registeredUserSearch: '', registeredUserStatus: 'all', registeredUserPeriod: 'all', registeredUserDate: localDateInputValue(new Date()), customerRecordFilter: 'all', customerRecordSearch: '', recordSelection: { collection: '', ids: new Set(), active: false } };
+const initialCustomerDateRange = defaultMonthRange();
+const state = { user: null, profile: null, view: 'dashboard', records: {}, customerPlanData: [], customerRecordData: null, customerPurchaseRows: null, customerContacts: [], customerAccounts: [], registeredUsers: null, registeredUserSearch: '', registeredUserStatus: 'all', registeredUserFrom: '', registeredUserTo: '', workspaceDateFrom: '', workspaceDateTo: '', customerDateFrom: initialCustomerDateRange.from, customerDateTo: initialCustomerDateRange.to, customerRecordFilter: 'all', customerRecordSearch: '', recordSelection: { collection: '', ids: new Set(), active: false } };
 let portalMode = 'customer';
 let pendingAuthError = '';
 let profileProvisioning = null;
@@ -59,8 +60,8 @@ const definitions = {
 
 const titles = {
     dashboard: 'Dashboard', customers: 'Customers', products: 'Products & services',
-    purchases: 'Purchase Transactions', payments: 'Payments', expenses: 'Expenses', reports: 'Reports', users: 'User Management', 'customer-accounts': 'Customer accounts',
-    'customer-dashboard': 'Customer overview', catalog: 'My plan purchase', 'my-purchases': 'Purchase Transactions', transactions: 'Transactions', 'customer-profile': 'Personal information', 'customer-payments': 'Payments', 'customer-payment-report': 'Payment summary', 'customer-expenses': 'My expenses', 'customer-records': 'All records', 'customer-contacts': 'My customers'
+    purchases: 'Purchase Transactions', payments: 'Payments', expenses: 'Expenses', reports: 'Reports', users: 'User Management', 'customer-accounts': 'User accounts',
+    'customer-dashboard': 'User Overview', catalog: 'My plan purchase', 'my-purchases': 'Purchase Transactions', transactions: 'Transactions', 'customer-profile': 'Personal information', 'customer-payments': 'Payments', 'customer-payment-report': 'Payment summary', 'customer-expenses': 'My expenses', 'customer-records': 'All records', 'help-center': 'Help Center'
 };
 
 function escapeHtml(value = '') {
@@ -145,7 +146,7 @@ function renderAuth(mode = 'customer', error = '') {
         <section class="auth-art">
             <a class="brand" href="#"><img class="brand-mark" src="images/fintrack-mark.svg" alt=""><span>FINTRACK</span></a>
             <div class="auth-art-copy">
-                <span class="auth-art-kicker"><span></span> ${admin ? 'FINTRACK WORKSPACE ACCESS' : 'CUSTOMER PURCHASE RECORDS'}</span>
+                <span class="auth-art-kicker"><span></span> ${admin ? 'FINTRACK WORKSPACE ACCESS' : 'USER PURCHASE RECORDS'}</span>
                 <h1>${admin ? 'The business view.<br>All in one place.' : 'Every purchase.<br>Clearly accounted for.'}</h1>
                 <p>${admin ? 'Sign in to manage customers, plans, payments, expenses, and financial reports.' : 'Browse available plans and keep your purchase history and transactions together.'}</p>
                 <div class="auth-preview" aria-hidden="true">
@@ -158,7 +159,7 @@ function renderAuth(mode = 'customer', error = '') {
         </section>
         <section class="auth-panel"><div class="auth-card">
             <a class="brand auth-mobile-brand" href="#"><img class="brand-mark" src="images/fintrack-mark.svg" alt=""><span>FINTRACK</span></a>
-            <span class="auth-card-kicker">${admin ? 'ADMINISTRATOR ACCESS' : 'CUSTOMER ACCESS'}</span>
+            <span class="auth-card-kicker">${admin ? 'ADMINISTRATOR ACCESS' : 'USER ACCESS'}</span>
             <h2>${creating ? 'Create your account' : admin ? 'Admin sign in' : 'Welcome back'}</h2>
             <p>${creating ? 'Create an account to browse and purchase plans.' : admin ? 'Sign in to manage the Fintrack workspace.' : 'Sign in to view your plans and transactions.'}</p>
             ${error ? `<div class="form-error" role="alert">${escapeHtml(error)}</div>` : ''}
@@ -169,7 +170,7 @@ function renderAuth(mode = 'customer', error = '') {
                 ${creating ? '<div class="field"><label for="auth-confirm-password">Confirm password</label><div class="password-input-wrap"><input id="auth-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required><button class="password-toggle" type="button" data-password-toggle="auth-confirm-password" aria-label="Show confirm password" aria-pressed="false"><span class="password-eye-icon" aria-hidden="true">&#128065;&#65038;</span></button></div></div><label class="terms-check"><input name="acceptTerms" type="checkbox" required><span>I agree to the <a href="/terms.html" target="_blank" rel="noopener noreferrer" data-terms-link>Terms and Conditions</a></span></label>' : ''}
                 <button class="button auth-submit" type="submit">${creating ? 'Create account' : 'Sign in to FinTrack'}<span aria-hidden="true">→</span></button>
             </form>
-            <p class="auth-switch">${creating ? 'Already registered?' : !admin ? 'New to Fintrack?' : 'Not an administrator?'} <button class="text-button" type="button" ${creating ? 'data-auth-toggle' : admin ? 'data-auth-portal="customer"' : 'data-auth-toggle'}>${creating ? 'Sign in' : admin ? 'Customer access' : 'Create an account'}</button></p>
+            <p class="auth-switch">${creating ? 'Already registered?' : !admin ? 'New to Fintrack?' : 'Not an administrator?'} <button class="text-button" type="button" ${creating ? 'data-auth-toggle' : admin ? 'data-auth-portal="customer"' : 'data-auth-toggle'}>${creating ? 'Sign in' : admin ? 'User access' : 'Create an account'}</button></p>
             ${!creating && !admin ? '<p class="auth-switch auth-admin-switch"><button class="text-button" type="button" data-auth-portal="admin">Login as Admin</button></p>' : ''}
             <div class="auth-card-note"><span aria-hidden="true">◆</span> Your business records stay connected to your account.</div>
         </div></section>`;
@@ -240,7 +241,7 @@ async function renderView() {
         if (state.view === 'customer-payment-report') return renderCustomerPaymentReport();
         if (state.view === 'customer-expenses') return renderCustomerExpenses();
         if (state.view === 'customer-records') return renderCustomerRecords();
-        if (state.view === 'customer-contacts') return renderCustomerContacts();
+        if (state.view === 'help-center') return renderHelpCenter();
         return;
     }
     if (state.view === 'customer-accounts') return renderCustomerAccounts();
@@ -326,16 +327,10 @@ function drawWorkspaceCharts(purchases, payments, expenses) {
     drawDoughnutChart('workspace-payment-chart', Object.keys(methods), Object.values(methods));
 }
 
-function drawCustomerCharts(purchases, payments, expenses) {
+function drawCustomerCharts(payments, expenses) {
     const range = sixMonthRange();
     drawLineChart('customer-activity-chart', range, [
-        { label: 'Purchases', data: monthlyTotals(purchases, 'purchaseDate', 'totalAmount', range), borderColor: '#63d2c0' },
-        { label: 'Payments', data: monthlyTotals(payments, 'paymentDate', 'amount', range), borderColor: '#79a9e8' },
-        { label: 'Expenses', data: monthlyTotals(expenses, 'expenseDate', 'amount', range), borderColor: '#ef8b78' }
-    ]);
-    drawDoughnutChart('customer-balance-chart', ['Paid', 'Still to pay'], [
-        purchases.reduce((sum, purchase) => sum + Number(purchase.amountPaid || 0), 0),
-        purchases.reduce((sum, purchase) => sum + Number(purchase.balanceAmount || 0), 0)
+        { label: 'Monthly expenses', data: monthlyPaidExpenseTotals(payments, expenses, range), borderColor: '#ef8b78' }
     ]);
 }
 
@@ -362,7 +357,7 @@ async function renderDashboard() {
         <div class="metrics">
             ${metric('Total sales', money(summary.sales), `${purchases.length} purchase records`, '↗')}
             ${metric('Outstanding', money(summary.receivables), 'Customer balances due', '₱')}
-            ${metric('Registered customers', summary.registeredCustomers, `${summary.linkedRegisteredCustomers} linked · ${summary.unlinkedRegisteredCustomers} unlinked · ${summary.customers} records`, '◉')}
+            ${metric('Registered users', summary.registeredCustomers, `${summary.linkedRegisteredCustomers} linked · ${summary.unlinkedRegisteredCustomers} unlinked · ${summary.customers} records`, '◉')}
             ${metric('Expenses', money(summary.expenses), 'Business expenses recorded', '↘')}
         </div>
         <div class="dashboard-charts">
@@ -389,16 +384,7 @@ async function renderUserManagement(filterText = state.registeredUserSearch, ref
     }
     state.registeredUserSearch = filterText;
     const users = [...state.registeredUsers].sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
-    let periodUsers = users;
-    if (state.registeredUserPeriod !== 'all') {
-        const { from, to } = calendarDateRange(state.registeredUserPeriod, state.registeredUserDate);
-        periodUsers = users.filter((user) => {
-            const createdAt = new Date(user.createdAt);
-            if (Number.isNaN(createdAt.valueOf())) return false;
-            const date = createdAt.toISOString().slice(0, 10);
-            return date >= from && date <= to;
-        });
-    }
+    const periodUsers = filterRecordsByDateRange(users, 'createdAt', state.registeredUserFrom, state.registeredUserTo);
     const statusUsers = state.registeredUserStatus === 'all'
         ? periodUsers
         : periodUsers.filter((user) => user.status === state.registeredUserStatus);
@@ -412,7 +398,7 @@ async function renderUserManagement(filterText = state.registeredUserSearch, ref
         { id: 'inactive', label: 'Inactive', count: periodUsers.filter((user) => user.status === 'inactive').length }
     ];
     const table = filtered.length ? `<div class="table-wrap"><table class="registered-users-table"><thead><tr><th>USER</th><th>EMAIL</th><th>STATUS</th><th>REGISTERED</th><th>LAST SIGN-IN</th><th>ACTIONS</th></tr></thead><tbody>${filtered.map((user) => `<tr><td data-label="User"><strong>${escapeHtml(user.fullName || 'Unnamed user')}</strong>${user.isMainAdmin ? '<small class="record-detail">Main admin</small>' : ''}</td><td data-label="Email">${escapeHtml(user.email || '—')}</td><td data-label="Status">${statusPill(user.status)}</td><td data-label="Registered">${shortDate(user.createdAt)}</td><td data-label="Last sign-in">${shortDate(user.lastSignInAt)}</td><td data-label="Actions"><div class="row-actions"><button class="small-button" type="button" data-action="registered-user-details" data-id="${escapeHtml(user.id)}">Details</button>${user.isMainAdmin ? '' : `<button class="small-button" type="button" data-action="registered-user-status" data-id="${escapeHtml(user.id)}" data-status="${user.status === 'active' ? 'inactive' : 'active'}">${user.status === 'active' ? 'Deactivate' : 'Activate'}</button><button class="small-button delete" type="button" data-action="registered-user-delete" data-id="${escapeHtml(user.id)}">Delete</button>`}</div></td></tr>`).join('')}</tbody></table></div>` : emptyState(needle ? 'No matching users' : 'No registered users', needle ? 'Try a different name, email, or status.' : 'Registered accounts will appear here.');
-    viewContainer.innerHTML = `<div class="view-heading user-management-heading"><div><h2>User Management</h2><p>View account details and manage sign-in access.</p></div><div class="toolbar"><input id="registered-user-search" type="search" placeholder="Search users" aria-label="Search registered users" value="${escapeHtml(filterText)}"></div></div><div class="metrics admin-user-metrics">${metric('Total Registered Users', users.length, 'All authentication accounts', '◎')}${metric('Active Users', activeUsers, 'Can sign in', '✓')}${metric('Inactive Users', inactiveUsers, 'Sign-in disabled', '⊘')}</div><div class="registered-user-filterbar"><div class="record-filters registered-user-status-filters" role="group" aria-label="Filter users by status">${statusFilters.map((filter) => `<button class="record-filter${state.registeredUserStatus === filter.id ? ' is-active' : ''}" type="button" data-action="registered-user-filter" data-filter="${filter.id}" aria-pressed="${state.registeredUserStatus === filter.id}">${filter.label}<span>${filter.count}</span></button>`).join('')}</div><div class="transaction-filters registered-user-date-filters"><label class="period-filter"><span>View</span><select id="registered-user-period" aria-label="Registration period"><option value="all" ${state.registeredUserPeriod === 'all' ? 'selected' : ''}>All time</option><option value="day" ${state.registeredUserPeriod === 'day' ? 'selected' : ''}>Day</option><option value="week" ${state.registeredUserPeriod === 'week' ? 'selected' : ''}>Week</option><option value="month" ${state.registeredUserPeriod === 'month' ? 'selected' : ''}>Month</option><option value="year" ${state.registeredUserPeriod === 'year' ? 'selected' : ''}>Year</option></select></label><label class="period-filter transaction-date-filter"><span>Calendar date</span><input id="registered-user-date" type="date" value="${escapeHtml(state.registeredUserDate)}" aria-label="Choose registration date" ${state.registeredUserPeriod === 'all' ? 'disabled' : ''}></label></div></div><section class="panel registered-user-panel"><div class="panel-header"><h3>Registered Users</h3><span class="record-count">Showing ${filtered.length} of ${statusUsers.length}</span></div>${table}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading user-management-heading"><div><h2>User Management</h2><p>View account details and manage sign-in access.</p></div><div class="toolbar"><input id="registered-user-search" type="search" placeholder="Search users" aria-label="Search registered users" value="${escapeHtml(filterText)}"></div></div><div class="metrics admin-user-metrics">${metric('Total Registered Users', users.length, 'All authentication accounts', '◎')}${metric('Active Users', activeUsers, 'Can sign in', '✓')}${metric('Inactive Users', inactiveUsers, 'Sign-in disabled', '⊘')}</div><div class="registered-user-filterbar"><div class="record-filters registered-user-status-filters" role="group" aria-label="Filter users by status">${statusFilters.map((filter) => `<button class="record-filter${state.registeredUserStatus === filter.id ? ' is-active' : ''}" type="button" data-action="registered-user-filter" data-filter="${filter.id}" aria-pressed="${state.registeredUserStatus === filter.id}">${filter.label}<span>${filter.count}</span></button>`).join('')}</div><div class="transaction-filters registered-user-date-filters"><label class="period-filter"><span>From</span><input id="registered-user-from" type="date" value="${escapeHtml(state.registeredUserFrom)}" aria-label="Registration start date"></label><label class="period-filter"><span>To</span><input id="registered-user-to" type="date" value="${escapeHtml(state.registeredUserTo)}" aria-label="Registration end date"></label></div></div><section class="panel registered-user-panel"><div class="panel-header"><h3>Registered Users</h3><span class="record-count">Showing ${filtered.length} of ${statusUsers.length}</span></div>${table}</section>`;
 }
 
 async function showRegisteredUserDetails(id) {
@@ -421,38 +407,35 @@ async function showRegisteredUserDetails(id) {
 }
 
 async function renderCustomerDashboard() {
-    const [purchases, payments, expenses] = await Promise.all([
+    const [purchases, payments, expenses, plans] = await Promise.all([
         apiFetch('/customer/purchases'),
         apiFetch('/customer/payments'),
-        apiFetch('/customer/expenses')
+        apiFetch('/customer/expenses'),
+        apiFetch('/customer/plans')
     ]);
-    const total = purchases.reduce((sum, purchase) => sum + Number(purchase.totalAmount || 0), 0);
-    const paid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-    const outstanding = purchases.reduce((sum, purchase) => sum + Number(purchase.balanceAmount || 0), 0);
+    const { paid, unpaid, totalExpenses } = customerExpenseSummary(purchases, payments, expenses);
+    const allocatedBudget = plans.filter((plan) => plan.state !== 'inactive')
+        .reduce((sum, plan) => sum + Math.max(0, Number(normalizeCustomerPlan(plan).budget || 0)), 0);
     const recent = [...purchases].sort((a, b) => String(b.purchaseDate || '').localeCompare(String(a.purchaseDate || ''))).slice(0, 5);
-    const duePurchases = purchases.filter((purchase) => Number(purchase.balanceAmount) > 0).sort((left, right) => String(left.purchaseDate || '').localeCompare(String(right.purchaseDate || '')));
-    const dueItems = duePurchases.map((purchase) => {
+    const duePurchases = purchases.map((purchase) => ({ purchase, balance: purchaseUnpaidAmount(purchase) }))
+        .filter(({ balance }) => balance > 0)
+        .sort((left, right) => String(left.purchase.purchaseDate || '').localeCompare(String(right.purchase.purchaseDate || '')));
+    const dueItems = duePurchases.map(({ purchase, balance }) => {
         const description = (purchase.items || []).map((item) => `${item.productName} × ${item.quantity}`).join(', ') || 'Purchase';
-        return `<li><span><strong>${escapeHtml(description)}</strong><small>Purchase date: ${shortDate(purchase.purchaseDate)}</small></span><strong>${money(purchase.balanceAmount)}</strong></li>`;
+        return `<li><span><strong>${escapeHtml(description)}</strong><small>Purchase date: ${shortDate(purchase.purchaseDate)}</small></span><strong>${money(balance)}</strong></li>`;
     }).join('');
     viewContainer.innerHTML = `
         <div class="view-heading"><div><h2>Your finances</h2><p>Purchases, payments, and expenses at a glance.</p></div></div>
-        <div class="metrics customer-metrics">
-            ${metric('Total purchases', money(total), `${purchases.length} purchase records`, '↗')}
-            ${metric('Total payments', money(paid), `${payments.length} payment records`, '✓')}
-            ${metric('Total expenses', money(expenseTotal), `${expenses.length} expense records`, '↘')}
-            ${metric('Outstanding balance', money(outstanding), 'Remaining across purchases', '₱')}
+        <section class="panel allocated-budget-panel"><div><span class="allocated-budget-label">Allocated Budget</span><strong>${money(allocatedBudget)}</strong><small>${plans.filter((plan) => plan.state !== 'inactive').length} active ${plans.filter((plan) => plan.state !== 'inactive').length === 1 ? 'plan' : 'plans'}</small></div><button class="text-button" type="button" data-view="catalog">View plans</button></section>
+        <div class="dashboard-charts customer-dashboard-charts">
+            <section class="panel chart-panel"><div class="panel-header"><h3>Monthly expenses</h3><span class="record-count">Paid expenses · last six months</span></div><div class="chart-canvas"><canvas id="customer-activity-chart" role="img" aria-label="Line chart showing monthly paid expenses for the last six months"></canvas></div></section>
         </div>
-        <div class="dashboard-charts">
-            <section class="panel chart-panel"><div class="panel-header"><h3>Six-month activity</h3><span class="record-count">Purchases, payments, expenses</span></div><div class="chart-canvas"><canvas id="customer-activity-chart" role="img" aria-label="Line chart showing six months of purchases, payments, and expenses"></canvas></div></section>
-            <section class="panel chart-panel"><div class="panel-header"><h3>Purchase balance</h3><span class="record-count">Paid vs still to pay</span></div><div class="chart-canvas chart-canvas-doughnut"><canvas id="customer-balance-chart" role="img" aria-label="Doughnut chart showing paid and outstanding balances"></canvas></div></section>
-        </div>
+        <div class="metrics customer-metrics expense-summary-below-chart">${metric('Paid', money(paid), 'Payments received, including partial payments', '✓')}${metric('Unpaid', money(unpaid), 'Remaining purchase balances', '₱')}${metric('Total Expenses', money(totalExpenses), 'Actual paid amount only', '↘')}</div>
         <section class="due-reminder-note" aria-labelledby="due-reminder-title"><div class="due-reminder-head"><div><span class="due-reminder-kicker">PAYMENT REMINDER</span><h3 id="due-reminder-title">All dues to pay</h3></div>${duePurchases.length ? '<button class="button due-reminder-action" data-action="new-customer-payment">Record payment</button>' : ''}</div>${duePurchases.length ? `<ul class="due-reminder-list">${dueItems}</ul>` : '<p class="due-reminder-clear">You’re all caught up. No outstanding balances.</p>'}</section>
         <section class="panel"><div class="panel-header"><h3>Recent purchases</h3><button class="text-button" data-view="customer-records">View all records</button></div>
             ${recent.length ? customerPurchaseTable(recent) : emptyState('No purchases yet', 'Add a purchase to start your financial records.')}
         </section>`;
-    drawCustomerCharts(purchases, payments, expenses);
+    drawCustomerCharts(payments, expenses);
 }
 
 function planMoneyValue(value) {
@@ -493,13 +476,9 @@ function purchaseActualTotal(purchase) {
 }
 
 async function renderCustomerCatalog() {
-    const [customerProducts, rawCustomerPlans] = await Promise.all([apiFetch('/customer/products'), apiFetch('/customer/plans')]);
+    const rawCustomerPlans = await apiFetch('/customer/plans');
     const customerPlans = rawCustomerPlans.map(normalizeCustomerPlan);
-    state.customerProductData = customerProducts;
     state.customerPlanData = customerPlans;
-    const customerRows = customerProducts.length ? `<div class="table-wrap"><table class="customer-products-table customer-mobile-cards"><thead><tr><th>NAME</th><th>CATEGORY</th><th>TYPE</th><th>PRICE</th><th>STOCK</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>
-        ${customerProducts.map((product) => { const active = product.status !== 'inactive'; return `<tr><td data-label="Name"><strong>${escapeHtml(product.productName)}</strong>${product.description ? `<small class="record-detail">${escapeHtml(product.description)}</small>` : ''}</td><td data-label="Category">${escapeHtml(product.category || '—')}</td><td data-label="Type">${escapeHtml(product.type)}</td><td data-label="Price">${money(product.price)}</td><td data-label="Stock">${Number(product.stockQuantity || 0)}</td><td data-label="Status"><button class="plan-state-toggle ${active ? 'is-active' : 'is-inactive'}" type="button" data-action="customer-product-toggle" data-id="${escapeHtml(product.id)}" data-status="${active ? 'inactive' : 'active'}" aria-label="Set ${escapeHtml(product.productName)} ${active ? 'inactive' : 'active'}" title="Click to set ${active ? 'inactive' : 'active'}">${active ? 'Active' : 'Inactive'}</button></td><td data-label="Actions"><div class="row-actions"><button class="small-button catalog-icon-button" type="button" data-action="customer-product-edit" data-id="${escapeHtml(product.id)}" aria-label="Edit ${escapeHtml(product.productName)}" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z"/></svg></button><button class="small-button delete catalog-icon-button" type="button" data-action="customer-product-delete" data-id="${escapeHtml(product.id)}" aria-label="Delete ${escapeHtml(product.productName)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button></div></td></tr>`; }).join('')}
-        </tbody></table></div>` : emptyState('No products or services added yet', 'Add your own items to keep them in your customer account.');
     const planRows = customerPlans.length ? `<div class="table-wrap"><table class="customer-plans-table customer-mobile-cards"><thead><tr><th>PLAN</th><th>DATE</th><th>ITEMS</th><th>BUDGET</th><th>ESTIMATED TOTAL</th><th>REMAINING</th><th>STATE</th><th>BUDGET STATUS</th><th>ACTIONS</th></tr></thead><tbody>${customerPlans.map((plan) => {
         const items = plan.items || [];
         const legacyMeta = /^FINTRACK_PLAN_V1\|([^|]+)\|([\d.]+)$/.exec(plan.description || '');
@@ -513,17 +492,14 @@ async function renderCustomerCatalog() {
         const itemRows = `<div class="plan-items-preview"><div class="plan-items-preview-head"><span>Item</span><span>Qty</span><span>Estimated</span><span>Subtotal</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><span>${Number(item.quantity)}</span><span>${money(item.estimatedPrice ?? item.price)}</span><strong>${money(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0))}</strong></div>`).join('')}</div>`;
         return `<tr><td data-label="Plan"><strong>${escapeHtml(plan.planName)}</strong></td><td data-label="Date">${shortDate(planDate)}</td><td data-label="Items">${itemRows}</td><td data-label="Budget">${hasBudget ? money(budget) : '—'}</td><td data-label="Estimated total">${money(estimatedTotal)}</td><td data-label="Remaining">${hasBudget ? money(remaining) : '—'}</td><td data-label="State"><button class="plan-state-toggle ${state === 'active' ? 'is-active' : 'is-inactive'}" type="button" data-action="customer-plan-toggle" data-id="${escapeHtml(plan.id)}" data-state="${state === 'active' ? 'inactive' : 'active'}" aria-label="Set ${escapeHtml(plan.planName)} ${state === 'active' ? 'inactive' : 'active'}" title="Click to set ${state === 'active' ? 'inactive' : 'active'}">${state === 'active' ? 'Active' : 'Inactive'}</button></td><td data-label="Budget status">${hasBudget ? `<span class="plan-budget-status ${status === 'OVER BUDGET' ? 'is-over' : status === 'ON BUDGET' ? 'is-even' : ''}">${escapeHtml(status)}</span>` : '—'}</td><td data-label="Actions"><div class="row-actions"><button class="small-button catalog-icon-button" type="button" data-action="customer-plan-edit" data-id="${escapeHtml(plan.id)}" aria-label="Edit ${escapeHtml(plan.planName)}" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z"/></svg></button><button class="small-button delete catalog-icon-button" type="button" data-action="customer-plan-delete" data-id="${escapeHtml(plan.id)}" aria-label="Delete ${escapeHtml(plan.planName)}" title="Delete plan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button></div></td></tr>`;
     }).join('')}</tbody></table></div>` : emptyState('No plans added yet', 'Create a plan to track your estimated spending against a budget.');
-    const filter = state.customerCatalogFilter || 'all';
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Products & services</h2><p>Manage your products, services, and purchase plans.</p></div><div class="toolbar"><button class="small-button catalog-icon-button" type="button" data-action="new-customer-product" aria-label="Add Product" title="Add Product"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 5 9-5M12 12v9"/></svg></button><button class="small-button catalog-icon-button is-primary" type="button" data-action="new-customer-plan" aria-label="Add Plan" title="Add Plan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 12v6M9 15h6"/></svg></button></div></div>
-        <div class="record-filters catalog-filters" role="group" aria-label="Organize products and plans"><button class="record-filter${filter === 'all' ? ' is-active' : ''}" type="button" data-action="customer-catalog-filter" data-filter="all" aria-pressed="${filter === 'all'}">All<span>${customerProducts.length + customerPlans.length}</span></button><button class="record-filter${filter === 'products' ? ' is-active' : ''}" type="button" data-action="customer-catalog-filter" data-filter="products" aria-pressed="${filter === 'products'}">Products & services<span>${customerProducts.length}</span></button><button class="record-filter${filter === 'plans' ? ' is-active' : ''}" type="button" data-action="customer-catalog-filter" data-filter="plans" aria-pressed="${filter === 'plans'}">Plans<span>${customerPlans.length}</span></button></div>
-        <section class="panel record-section catalog-products-section" ${filter === 'plans' ? 'hidden' : ''}><div class="panel-header"><h3>Your products & services</h3><span class="record-count">${customerProducts.length} ${customerProducts.length === 1 ? 'item' : 'items'}</span></div>${customerRows}</section>
-        <section class="panel record-section catalog-plans-section" ${filter === 'products' ? 'hidden' : ''}><div class="panel-header"><h3>Your plans</h3><span class="record-count">${customerPlans.length} ${customerPlans.length === 1 ? 'plan' : 'plans'}</span></div>${planRows}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>My plan purchase</h2><p>Set an allocated budget and track estimated costs for your plans.</p></div><div class="toolbar"><button class="button" type="button" data-action="new-customer-plan">Add Plan</button></div></div>
+        <section class="panel record-section catalog-plans-section"><div class="panel-header"><h3>Plans</h3><span class="record-count">${customerPlans.length} ${customerPlans.length === 1 ? 'plan' : 'plans'}</span></div>${planRows}</section>`;
 }
 
-async function renderCustomerPurchases(period, anchorDate, filterText = '', refresh = true, restoreFocus = false) {
-    const selection = setCustomerCalendarSelection(period, anchorDate);
+async function renderCustomerPurchases(from, to, filterText = '', refresh = true, restoreFocus = false) {
+    const selection = setCustomerDateSelection(from, to);
     if (refresh || !state.customerPurchaseRows) state.customerPurchaseRows = await apiFetch('/customer/purchases');
-    const purchases = filterRecordsByCalendar(state.customerPurchaseRows, 'purchaseDate', selection.period, selection.date)
+    const purchases = filterRecordsByDateRange(state.customerPurchaseRows, 'purchaseDate', selection.from, selection.to)
         .sort((a, b) => String(b.purchaseDate || '').localeCompare(String(a.purchaseDate || '')));
     const needle = filterText.trim().toLowerCase();
     const filteredPurchases = needle ? purchases.filter((purchase) => [
@@ -536,25 +512,9 @@ async function renderCustomerPurchases(period, anchorDate, filterText = '', refr
     const listContent = filteredPurchases.length
         ? customerPurchaseTransactionsTable(filteredPurchases)
         : emptyState(needle ? 'No matching transactions' : 'No purchases in this period', needle ? 'Try a different search.' : 'Purchases will appear here.');
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Purchase Transactions</h2><p>Your purchases, totals, and remaining balances.</p></div><div class="transaction-filters">${customerCalendarFilter(selection)}</div><button class="button" data-action="new-customer-purchase">Create transaction</button></div><section class="panel"><div class="purchase-search-toolbar"><input id="customer-purchase-search" type="search" aria-label="Search purchase transactions" placeholder="Search transactions" value="${escapeHtml(filterText)}"><span class="record-count">Showing ${filteredPurchases.length} of ${purchases.length}</span>${purchaseBulkControls}</div>${listContent}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Purchase Transactions</h2><p>Your purchases, totals, and remaining balances.</p></div><div class="transaction-filters">${customerDateRangeFilter(selection)}</div><button class="button" data-action="new-customer-purchase">Create transaction</button></div><section class="panel"><div class="purchase-search-toolbar"><input id="customer-purchase-search" type="search" aria-label="Search purchase transactions" placeholder="Search transactions" value="${escapeHtml(filterText)}"><span class="record-count">Showing ${filteredPurchases.length} of ${purchases.length}</span>${purchaseBulkControls}</div>${listContent}</section>`;
     if (restoreFocus) {
         const search = viewContainer.querySelector('#customer-purchase-search');
-        search?.focus();
-        search?.setSelectionRange(filterText.length, filterText.length);
-    }
-}
-
-async function renderCustomerContacts(filterText = '', restoreFocus = false, refresh = true) {
-    if (refresh) state.customerContacts = await apiFetch('/customer/contacts');
-    const contacts = [...state.customerContacts].sort((left, right) => String(left.customerName || '').localeCompare(String(right.customerName || '')));
-    const needle = filterText.trim().toLowerCase();
-    const filtered = needle ? contacts.filter((contact) => [contact.customerName, contact.email, contact.contactNumber, contact.address].some((value) => String(value || '').toLowerCase().includes(needle))) : contacts;
-    const rows = filtered.length ? `<div class="table-wrap"><table class="customer-contact-table"><colgroup><col class="contact-name-col"><col class="contact-phone-col"><col class="contact-email-col"><col class="contact-address-col"><col class="contact-actions-col"></colgroup><thead><tr><th>NAME</th><th>PHONE</th><th>EMAIL</th><th>ADDRESS</th><th class="contact-actions-heading">ACTIONS</th></tr></thead><tbody>${filtered.map((contact) => `<tr><td><strong>${escapeHtml(contact.customerName)}</strong></td><td>${escapeHtml(contact.contactNumber || '—')}</td><td>${escapeHtml(contact.email || '—')}</td><td>${escapeHtml(contact.address || '—')}</td><td class="contact-actions-cell"><div class="row-actions"><button class="small-button" data-action="edit-customer-contact" data-id="${escapeHtml(contact.id)}">Edit</button><button class="small-button delete" data-action="delete-customer-contact" data-id="${escapeHtml(contact.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>` : emptyState(needle ? 'No matching customers' : 'No customers yet', needle ? 'Try a different name, phone, or email.' : 'Add your first customer contact to get started.');
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>My customers</h2><p>Manage contacts saved to your account.</p></div><div class="toolbar customer-contact-toolbar"><input id="customer-contact-search" type="search" placeholder="Search customers" aria-label="Search your customers" value="${escapeHtml(filterText)}"><button class="button" data-action="new-customer-contact">Add customer</button></div></div>
-        <section class="customer-contact-overview" aria-label="Customer count"><span class="customer-contact-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="16" r="8"/><path d="M9 40c1.8-8.2 7.3-12.3 15-12.3S37.2 31.8 39 40"/></svg></span><div><span class="customer-contact-count-label">TOTAL CUSTOMERS</span><strong>${contacts.length}</strong><small>Saved contacts</small></div><span class="customer-contact-overview-note">Your customer list</span></section>
-        <section class="panel customer-contact-records"><div class="panel-header"><div><h3>Customer records</h3><p>Contact details for the people you manage.</p></div><span class="record-count">Showing ${filtered.length} of ${contacts.length}</span></div>${rows}</section>`;
-    if (restoreFocus) {
-        const search = viewContainer.querySelector('#customer-contact-search');
         search?.focus();
         search?.setSelectionRange(filterText.length, filterText.length);
     }
@@ -576,23 +536,33 @@ function renderCustomerProfile() {
     updateAvatar(document.querySelector('#profile-photo-preview'));
 }
 
-async function renderCustomerPayments(period, anchorDate) {
-    const selection = setCustomerCalendarSelection(period, anchorDate);
+function renderHelpCenter() {
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Help Center</h2><p>Quick guides for managing your plans, purchases, payments, and records.</p></div></div>
+        <div class="help-center-grid">
+            <section class="panel"><div class="panel-header"><h3>Create a plan</h3></div><div class="panel-body"><ol><li>Open <strong>My plan purchase</strong> and select <strong>Add Plan</strong>.</li><li>Enter the plan name, date, allocated budget, and estimated items.</li><li>Save the plan to see its estimated total and remaining budget.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Record a purchase</h3></div><div class="panel-body"><ol><li>Open <strong>Purchase Transactions</strong> and choose <strong>Create transaction</strong>.</li><li>Your account is selected automatically. Choose a plan or item, then set the date and quantity.</li><li>Review the total and save. The purchase appears automatically in <strong>My expenses</strong>.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Record a payment</h3></div><div class="panel-body"><ol><li>Open <strong>Payments</strong> and select <strong>Record payment</strong>.</li><li>Choose a purchase with an outstanding balance, enter the amount, date, and method.</li><li>Save. The payment appears automatically in <strong>My expenses</strong>; paid and unpaid balances update from the amount actually paid.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Review records and expenses</h3></div><div class="panel-body"><ol><li>Use <strong>From</strong> and <strong>To</strong> date fields to narrow a list to a date range.</li><li><strong>My expenses</strong> includes purchases, payment activity, and any separate expenses you add.</li><li>Paid totals include completed payments and recorded expenses; unpaid balances are excluded from Total Expenses.</li></ol></div></section>
+        </div>`;
+}
+
+async function renderCustomerPayments(from, to) {
+    const selection = setCustomerDateSelection(from, to);
     const { purchases, payments } = await apiFetch('/customer/records');
-    const filteredPayments = filterRecordsByCalendar(payments, 'paymentDate', selection.period, selection.date).sort((left, right) => String(right.paymentDate || '').localeCompare(String(left.paymentDate || '')));
+    const filteredPayments = filterRecordsByDateRange(payments, 'paymentDate', selection.from, selection.to).sort((left, right) => String(right.paymentDate || '').localeCompare(String(left.paymentDate || '')));
     state.customerPaymentData = filteredPayments;
     const bulkControls = customerRecordBulkToolbar('customer-payments', filteredPayments);
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Payments</h2><p>Record payments against your purchases and monitor balances.</p></div><div class="transaction-filters">${customerCalendarFilter(selection)}</div><button class="button" data-action="new-customer-payment">Record payment</button></div>
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Payments</h2><p>Record payments against your purchases and monitor balances.</p></div><div class="transaction-filters">${customerDateRangeFilter(selection)}</div><button class="button" data-action="new-customer-payment">Record payment</button></div>
         <section class="panel"><div class="record-selection-toolbar">${bulkControls}</div>${filteredPayments.length ? customerPaymentTable(filteredPayments, purchases) : emptyState('No payments in this period', 'Payments will appear here.')}</section>`;
 }
 
-async function renderCustomerPaymentReport(period, anchorDate) {
-    const selection = setCustomerCalendarSelection(period, anchorDate);
+async function renderCustomerPaymentReport(from, to) {
+    const selection = setCustomerDateSelection(from, to);
     const allPayments = await apiFetch('/customer/payments');
-    const payments = filterRecordsByCalendar(allPayments, 'paymentDate', selection.period, selection.date);
+    const payments = filterRecordsByDateRange(allPayments, 'paymentDate', selection.from, selection.to);
     const methods = summarizePaymentMethods(payments);
     const total = methods.reduce((sum, method) => sum + method.total, 0);
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Payment summary</h2><p>Your collected payments grouped by payment method.</p></div><div class="transaction-filters">${customerCalendarFilter(selection)}</div></div>
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Payment summary</h2><p>Your collected payments grouped by payment method.</p></div><div class="transaction-filters">${customerDateRangeFilter(selection)}</div></div>
         <div class="payment-summary-layout"><div class="payment-summary-total">${metric('Total collected', money(total), `${methods.reduce((sum, item) => sum + item.count, 0)} recorded payments`, '✓')}</div><div class="payment-summary-methods">${methods.map((method) => metric(method.title, money(method.total), `${method.count} ${method.count === 1 ? 'payment' : 'payments'}`, method.mark)).join('')}</div></div>
         <section class="panel payment-report-panel"><div class="panel-header"><div><h3>Payments by method</h3><p>Cash, GCash, bank transfer, and others</p></div></div><div class="payment-report-chart"><canvas id="customer-payment-report-chart" role="img" aria-label="Doughnut chart showing customer payments by method"></canvas></div></section>`;
     const canvas = document.getElementById('customer-payment-report-chart');
@@ -603,53 +573,62 @@ async function renderCustomerPaymentReport(period, anchorDate) {
     });
 }
 
-async function renderCustomerExpenses(period, anchorDate) {
-    const selection = setCustomerCalendarSelection(period, anchorDate);
-    const allExpenses = await apiFetch('/customer/expenses');
-    const expenses = filterRecordsByCalendar(allExpenses, 'expenseDate', selection.period, selection.date);
-    expenses.sort((left, right) => String(right.expenseDate || '').localeCompare(String(left.expenseDate || '')));
+async function renderCustomerExpenses(from, to) {
+    const selection = setCustomerDateSelection(from, to);
+    const { purchases, payments, expenses: manualExpenses } = await apiFetch('/customer/records');
+    const expenses = filterRecordsByDateRange(customerExpenseEntries(purchases, payments, manualExpenses), 'date', selection.from, selection.to);
     state.customerExpenseData = expenses;
-    const bulkControls = customerRecordBulkToolbar('customer-expenses', expenses);
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>My expenses</h2><p>Your personal expense history.</p></div><div class="transaction-filters">${customerCalendarFilter(selection)}</div><button class="button" data-action="new-customer-expense">Add expense</button></div>
-        <section class="panel"><div class="record-selection-toolbar">${bulkControls}</div>${expenses.length ? customerExpenseTable(expenses) : emptyState('No expenses in this period', 'Expenses will appear here.')}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>My expenses</h2><p>Each purchase appears once: unpaid or partial purchases show as Purchases, and fully paid purchases show as Payments.</p></div><div class="transaction-filters">${customerDateRangeFilter(selection)}</div><button class="button" data-action="new-customer-expense">Add expense</button></div>
+        <section class="panel">${expenses.length ? customerExpenseTable(expenses) : emptyState('No expenses in this period', 'Purchases, payments, and other expenses will appear here.')}</section>`;
 }
 
-async function renderCustomerRecords(filter = state.customerRecordFilter, refresh = true, period, anchorDate, restoreSearchFocus = false) {
-    const selection = setCustomerCalendarSelection(period, anchorDate);
+async function renderCustomerRecords(filter = state.customerRecordFilter, refresh = true, from, to, restoreSearchFocus = false) {
+    const selection = setCustomerDateSelection(from, to);
     state.customerRecordFilter = filter;
     if (refresh || !state.customerRecordData) state.customerRecordData = await apiFetch('/customer/records');
-    const purchases = filterRecordsByCalendar(state.customerRecordData.purchases, 'purchaseDate', selection.period, selection.date);
-    const payments = filterRecordsByCalendar(state.customerRecordData.payments, 'paymentDate', selection.period, selection.date);
-    const expenses = filterRecordsByCalendar(state.customerRecordData.expenses, 'expenseDate', selection.period, selection.date);
-    const purchaseDescriptions = new Map(purchases.map((purchase) => [purchase.id, (purchase.items || []).map((item) => `${item.productName} × ${item.quantity}`).join(', ') || 'Purchase']));
-    const records = [
-        ...purchases.map((purchase) => { const total = purchaseActualTotal(purchase); const balance = Math.max(0, total - Number(purchase.amountPaid || 0)); return { id: purchase.id, purchaseId: purchase.id, date: purchase.purchaseDate, type: 'Purchase', description: purchaseDescriptions.get(purchase.id), detail: `Paid ${money(purchase.amountPaid)} · Balance ${money(balance)}`, amount: total, status: balance ? (Number(purchase.amountPaid || 0) ? 'partial' : 'unpaid') : 'paid' }; }),
-        ...payments.map((payment) => ({ id: payment.id, purchaseId: payment.purchaseId, date: payment.paymentDate, type: 'Payment', description: purchaseDescriptions.get(payment.purchaseId) || payment.purchaseLabel || 'Payment', detail: [payment.paymentMethod, payment.notes].filter(Boolean).join(' · '), amount: Number(payment.amount || 0), status: payment.paymentStatus || 'paid' })),
-        ...expenses.map((expense) => ({ id: expense.id, date: expense.expenseDate, type: 'Expense', description: expense.title, detail: [expense.category, expense.description].filter(Boolean).join(' · '), amount: Number(expense.amount || 0), status: 'Recorded' }))
-    ].sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')));
-    const outstanding = purchases.map((purchase) => ({ purchase, balance: Math.max(0, purchaseActualTotal(purchase) - Number(purchase.amountPaid || 0)) })).filter(({ balance }) => balance > 0).map(({ purchase, balance }) => ({ id: purchase.id, date: purchase.purchaseDate, type: 'Balance', description: purchaseDescriptions.get(purchase.id), amount: balance, status: purchase.paymentStatus || 'unpaid' }));
+    const purchases = filterRecordsByDateRange(state.customerRecordData.purchases, 'purchaseDate', selection.from, selection.to);
+    const payments = filterRecordsByDateRange(state.customerRecordData.payments, 'paymentDate', selection.from, selection.to);
+    const expenses = filterRecordsByDateRange(state.customerRecordData.expenses, 'expenseDate', selection.from, selection.to);
+    const records = filterRecordsByDateRange(
+        customerExpenseEntries(state.customerRecordData.purchases, state.customerRecordData.payments, state.customerRecordData.expenses),
+        'date',
+        selection.from,
+        selection.to
+    ).map((entry) => ({
+        id: entry.sourceType === 'expense' ? entry.sourceId : entry.id,
+        purchaseId: entry.sourceType === 'expense' ? undefined : entry.sourceId,
+        date: entry.date,
+        type: entry.sourceType === 'purchase' ? 'Purchase' : entry.sourceType === 'payment' ? 'Payment' : 'Expense',
+        description: entry.title,
+        detail: entry.sourceType === 'purchase' ? `Paid ${money(entry.paid)} · Balance ${money(entry.unpaid)}` : entry.detail,
+        amount: entry.paid + entry.unpaid,
+        balanceAmount: entry.unpaid,
+        status: entry.sourceType === 'expense' ? 'Recorded' : entry.status
+    }));
+    const outstanding = records.filter((record) => record.type === 'Purchase' && record.balanceAmount > 0)
+        .map((record) => ({ id: record.id, date: record.date, type: 'Balance', description: record.description, amount: record.balanceAmount, status: record.status }));
+    const purchaseRows = records.filter((record) => record.type === 'Purchase');
+    const paymentRows = records.filter((record) => record.type === 'Payment');
+    const expenseRows = records.filter((record) => record.type === 'Expense');
     const purchaseTotal = purchases.reduce((sum, purchase) => sum + purchaseActualTotal(purchase), 0);
     const paymentTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
     const outstandingTotal = outstanding.reduce((sum, row) => sum + row.amount, 0);
     const filters = [
         { id: 'all', label: 'All', count: records.length, rows: records },
-        { id: 'purchases', label: 'Purchases', count: purchases.length, rows: records.filter((record) => record.type === 'Purchase') },
-        { id: 'payments', label: 'Payments', count: payments.length, rows: records.filter((record) => record.type === 'Payment') },
-        { id: 'expenses', label: 'Expenses', count: expenses.length, rows: records.filter((record) => record.type === 'Expense') },
+        { id: 'purchases', label: 'Purchases', count: purchaseRows.length, rows: purchaseRows },
+        { id: 'payments', label: 'Payments', count: paymentRows.length, rows: paymentRows },
+        { id: 'expenses', label: 'Expenses', count: expenseRows.length, rows: expenseRows },
         { id: 'outstanding', label: 'Outstanding', count: outstanding.length, rows: outstanding }
     ];
     const selected = filters.find((item) => item.id === filter) || filters[0];
     const needle = state.customerRecordSearch.trim().toLowerCase();
     const visibleRows = needle ? selected.rows.filter((record) => [record.date, record.type, record.description, record.detail, record.amount, record.status].some((value) => String(value ?? '').toLowerCase().includes(needle))) : selected.rows;
     const table = visibleRows.length ? customerRecordTable(visibleRows) : emptyState(needle ? 'No matching records' : `No ${selected.label.toLowerCase()} yet`, needle ? 'Try a different search term.' : 'New records will appear here.');
-    const periodLabel = { day: 'Day', week: 'Week', month: 'Month', year: 'Year' }[selection.period] || 'Month';
-    const { from, to } = calendarDateRange(selection.period, selection.date);
-    const chartInterval = selection.period === 'year' ? 'Monthly' : 'Daily';
-    viewContainer.innerHTML = `<div class="print-record-heading"><h2>FinTrack · All records</h2><p>${selected.label} · ${periodLabel} · ${shortDate(from)} – ${shortDate(to)}${needle ? ` · Search: ${escapeHtml(state.customerRecordSearch)}` : ''} · ${visibleRows.length} records</p></div>
-        <div class="view-heading"><div><h2>All records</h2><p>One timeline for your purchases, payments, expenses, and balances.</p></div><div class="transaction-filters customer-record-filters">${customerCalendarFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
-        <div class="customer-record-charts"><section class="panel chart-panel"><div class="panel-header"><div><h3>Purchase Transaction Records</h3><p>${chartInterval} purchase totals</p></div><span class="record-count">${purchases.length} ${purchases.length === 1 ? 'transaction' : 'transactions'} · ${money(purchaseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-purchase-record-chart" role="img" aria-label="Purchase transaction totals for the selected period"></canvas></div></section><section class="panel chart-panel"><div class="panel-header"><div><h3>Expenses</h3><p>${chartInterval} expense totals</p></div><span class="record-count">${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'} · ${money(expenseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-expense-record-chart" role="img" aria-label="Expense totals for the selected period"></canvas></div></section></div>
-        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchases.length} ${purchases.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total payments', money(paymentTotal), `${payments.length} ${payments.length === 1 ? 'payment record' : 'payment records'}`, '✓')}${metric('Total expenses', money(expenseTotal), `${expenses.length} ${expenses.length === 1 ? 'expense record' : 'expense records'}`, '↘')}${metric('Outstanding balance', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
+    viewContainer.innerHTML = `<div class="print-record-heading"><h2>FinTrack · All records</h2><p>${selected.label} · ${shortDate(selection.from)} – ${shortDate(selection.to)}${needle ? ` · Search: ${escapeHtml(state.customerRecordSearch)}` : ''} · ${visibleRows.length} records</p></div>
+        <div class="view-heading"><div><h2>All records</h2><p>Each purchase appears once: unpaid or partial as Purchase, fully paid as Payment.</p></div><div class="transaction-filters customer-record-filters">${customerDateRangeFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
+        <div class="customer-record-charts"><section class="panel chart-panel"><div class="panel-header"><div><h3>Purchase Transaction Records</h3><p>Purchase totals in selected range</p></div><span class="record-count">${purchases.length} ${purchases.length === 1 ? 'transaction' : 'transactions'} · ${money(purchaseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-purchase-record-chart" role="img" aria-label="Purchase transaction totals for the selected date range"></canvas></div></section><section class="panel chart-panel"><div class="panel-header"><div><h3>Expenses</h3><p>Paid expenses in selected range</p></div><span class="record-count">${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'} · ${money(expenseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-expense-record-chart" role="img" aria-label="Expense totals for the selected date range"></canvas></div></section></div>
+        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchaseRows.length} ${purchaseRows.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total payments', money(paymentTotal), `${paymentRows.length} ${paymentRows.length === 1 ? 'payment record' : 'payment records'}`, '✓')}${metric('Total expenses', money(expenseTotal), `${expenseRows.length} ${expenseRows.length === 1 ? 'expense record' : 'expense records'}`, '↘')}${metric('Outstanding balance', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
         <section class="panel record-browser"><div class="record-filters" role="group" aria-label="Filter records">${filters.map((item) => `<button class="record-filter${item.id === selected.id ? ' is-active' : ''}" type="button" aria-pressed="${item.id === selected.id}" data-action="customer-record-filter" data-filter="${item.id}">${item.label}<span>${item.count}</span></button>`).join('')}<input type="search" id="customer-record-search" placeholder="Search records" value="${escapeHtml(state.customerRecordSearch)}" aria-label="Search ${selected.label.toLowerCase()} records"></div><div class="panel-header"><h3>${selected.label}</h3><span class="record-count">${needle ? `${visibleRows.length} of ` : ''}${selected.rows.length} ${selected.rows.length === 1 ? 'record' : 'records'}</span></div>${table}</section>`;
     if (restoreSearchFocus) {
         const search = viewContainer.querySelector('#customer-record-search');
@@ -664,20 +643,20 @@ function drawCustomerRecordCharts(purchases, expenses, selection) {
     customerRecordCharts = [];
     if (!window.Chart) return;
 
-    const { from, to } = calendarDateRange(selection.period, selection.date);
+    const { from, to } = selection;
+    const monthly = !from || !to || (new Date(`${to}T00:00:00.000Z`) - new Date(`${from}T00:00:00.000Z`)) > 62 * 86400000;
     const periods = [];
-    if (selection.period === 'year') {
-        for (let month = 0; month < 12; month += 1) periods.push(`${from.slice(0, 4)}-${String(month + 1).padStart(2, '0')}-01`);
-    } else {
-        const cursor = new Date(`${from}T00:00:00.000Z`);
+    if (from && to) {
+        const cursor = new Date(`${monthly ? `${from.slice(0, 7)}-01` : from}T00:00:00.000Z`);
         const finalDate = new Date(`${to}T00:00:00.000Z`);
         while (cursor <= finalDate) {
-            periods.push(cursor.toISOString().slice(0, 10));
-            cursor.setUTCDate(cursor.getUTCDate() + 1);
+            periods.push(monthly ? cursor.toISOString().slice(0, 7) : cursor.toISOString().slice(0, 10));
+            if (monthly) cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+            else cursor.setUTCDate(cursor.getUTCDate() + 1);
         }
     }
-    const periodKey = (date) => selection.period === 'year' ? date.slice(0, 7) : date;
-    const labels = periods.map((date) => new Date(`${date}T00:00:00.000Z`).toLocaleDateString('en-PH', selection.period === 'year' ? { month: 'short', timeZone: 'UTC' } : { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+    const periodKey = (date) => monthly ? date.slice(0, 7) : date;
+    const labels = periods.map((date) => new Date(`${monthly ? `${date}-01` : date}T00:00:00.000Z`).toLocaleDateString('en-PH', monthly ? { month: 'short', year: 'numeric', timeZone: 'UTC' } : { month: 'short', day: 'numeric', timeZone: 'UTC' }));
     const totalByDate = (records, field) => {
         const amounts = new Map(periods.map((date) => [periodKey(date), 0]));
         for (const record of records) {
@@ -764,7 +743,7 @@ function customerPaymentTable(payments, purchases = []) {
 }
 
 function customerExpenseTable(expenses) {
-    return `<div class="table-wrap"><table class="customer-expenses-table customer-mobile-cards"><thead><tr><th>DATE</th><th>EXPENSE</th><th>CATEGORY</th><th>DESCRIPTION / NOTES</th><th>AMOUNT</th><th>ACTIONS</th></tr></thead><tbody>${expenses.map((expense) => `<tr data-record-id="${escapeHtml(expense.id)}" data-record-collection="customer-expenses"><td data-label="Date">${customerRecordSelectionCheckbox(expense, 'customer-expenses')}${shortDate(expense.expenseDate)}</td><td data-label="Expense">${escapeHtml(expense.title)}</td><td data-label="Category">${escapeHtml(expense.category)}</td><td data-label="Description / notes">${escapeHtml(expense.description || '—')}</td><td data-label="Amount">${money(expense.amount)}</td><td data-label="Actions"><div class="row-actions"><button class="small-button" data-action="customer-expense-edit" data-id="${escapeHtml(expense.id)}">Edit</button><button class="small-button delete" data-action="customer-record-delete" data-kind="expenses" data-id="${escapeHtml(expense.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="table-wrap"><table class="customer-expenses-table customer-mobile-cards"><thead><tr><th>DATE</th><th>RECORD</th><th>DETAILS</th><th>PAID</th><th>UNPAID</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>${expenses.map((expense) => `<tr data-record-id="${escapeHtml(expense.id)}" data-record-collection="customer-expenses"><td data-label="Date">${shortDate(expense.date)}</td><td data-label="Record">${escapeHtml(expense.sourceType === 'purchase' ? 'Purchase' : expense.sourceType === 'payment' ? 'Payment' : 'Expense')}</td><td data-label="Details"><strong>${escapeHtml(expense.title || '—')}</strong>${expense.detail ? `<small class="record-detail">${escapeHtml(expense.detail)}</small>` : ''}</td><td data-label="Paid">${money(expense.paid)}</td><td data-label="Unpaid">${money(expense.unpaid)}</td><td data-label="Status">${statusPill(expense.status)}</td><td data-label="Actions">${expense.sourceType === 'expense' ? `<div class="row-actions"><button class="small-button" data-action="customer-expense-edit" data-id="${escapeHtml(expense.sourceId)}">Edit</button><button class="small-button delete" data-action="customer-record-delete" data-kind="expenses" data-id="${escapeHtml(expense.sourceId)}">Delete</button></div>` : '—'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function customerRecordSelectionCheckbox(record, collection) {
@@ -843,19 +822,18 @@ function updateCustomerPaymentEstimate() {
 }
 
 async function openCustomerPurchaseForm(selectedProductId = '') {
-    const [products, contacts, rawPlans] = await Promise.all([apiFetch('/customer/products'), apiFetch('/customer/contacts'), apiFetch('/customer/plans')]);
+    const customerId = state.profile?.customerId;
+    if (!customerId) throw new Error('Your account profile is not ready. Refresh the page and try again.');
+    const [products, rawPlans] = await Promise.all([apiFetch('/customer/products'), apiFetch('/customer/plans')]);
     const plans = rawPlans.map(normalizeCustomerPlan);
     state.customerPlanData = plans;
     const activeProducts = products.filter((product) => product.status === 'active');
     if (!activeProducts.length && !plans.length) {
-        notify('Add a product or service first. Your transaction will open after setup.');
-        return openCustomerProductForm();
+        notify('Create a plan first. You can then use it in a purchase transaction.');
+        return setView('catalog');
     }
-    const customerId = state.profile?.customerId;
     const customerName = state.profile?.customerName || state.profile?.fullName || state.user?.email || 'My account';
-    const customerOptions = `<option value="${escapeHtml(customerId || '')}">My account · ${escapeHtml(customerName)}</option>${contacts.map((contact) => `<option value="${escapeHtml(contact.id)}">${escapeHtml(contact.customerName)}</option>`).join('')}`;
-    const fields = `<div class="field"><label for="customer-purchase-customer">Customer</label><select id="customer-purchase-customer" name="customerId" required>${customerOptions}</select></div>
-        <p class="field-hint">Choose your own account or one of your saved customers.</p>
+    const fields = `<div class="field"><label for="customer-purchase-customer">Customer</label><input id="customer-purchase-customer" type="text" value="${escapeHtml(customerName)}" readonly><input type="hidden" name="customerId" value="${escapeHtml(customerId)}"></div>
         ${fieldMarkup(['purchaseDate', 'Purchase date', 'date', true], new Date().toISOString().slice(0, 10))}
         <div class="field"><span class="field-label">Purchase items</span><div class="customer-purchase-line-header"><span>Product / plan</span><span>Quantity</span><span>Line total</span><span></span></div><div class="customer-purchase-lines" data-customer-purchase-lines>${customerPurchaseLineMarkup(activeProducts, selectedProductId, plans)}</div><button class="text-button customer-purchase-add" type="button" data-action="add-customer-purchase-line">+ Add another item</button></div>
         ${fieldMarkup(['remarks', 'Remarks', 'textarea'])}
@@ -1037,10 +1015,10 @@ async function renderCustomerAccounts(filterText = '', restoreFocus = false, ref
     const unlinked = accounts.length - linked;
     const needle = filterText.trim().toLowerCase();
     const filtered = needle ? accounts.filter((account) => `${account.fullName} ${account.email} ${account.status} ${account.customerLinked ? 'linked' : 'unlinked'}`.toLowerCase().includes(needle)) : accounts;
-    const rows = filtered.length ? `<div class="table-wrap"><table><thead><tr><th>CUSTOMER</th><th>EMAIL</th><th>STATUS</th><th>CUSTOMER RECORD</th><th>REGISTERED</th></tr></thead><tbody>${filtered.map((account) => `<tr><td><strong>${escapeHtml(account.fullName || 'Unnamed customer')}</strong></td><td>${escapeHtml(account.email || '—')}</td><td>${statusPill(account.status)}</td><td>${statusPill(account.customerLinked ? 'Linked' : 'Not linked')}</td><td>${shortDate(account.createdAt)}</td></tr>`).join('')}</tbody></table></div>` : emptyState(needle ? 'No matching customer accounts' : 'No customer accounts yet', needle ? 'Try a different name, email, or link status.' : 'Registered customer accounts will appear here.');
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Registered customer accounts</h2><p>Account totals use customer-role profiles; linked status is checked against actual customer records.</p></div><div class="toolbar"><input type="search" id="customer-account-search" placeholder="Search name, email, or status" value="${escapeHtml(filterText)}" aria-label="Search customer accounts"></div></div>
+    const rows = filtered.length ? `<div class="table-wrap"><table><thead><tr><th>USER</th><th>EMAIL</th><th>STATUS</th><th>USER RECORD</th><th>REGISTERED</th></tr></thead><tbody>${filtered.map((account) => `<tr><td><strong>${escapeHtml(account.fullName || 'Unnamed user')}</strong></td><td>${escapeHtml(account.email || '—')}</td><td>${statusPill(account.status)}</td><td>${statusPill(account.customerLinked ? 'Linked' : 'Not linked')}</td><td>${shortDate(account.createdAt)}</td></tr>`).join('')}</tbody></table></div>` : emptyState(needle ? 'No matching user accounts' : 'No user accounts yet', needle ? 'Try a different name, email, or link status.' : 'Registered user accounts will appear here.');
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Registered user accounts</h2><p>Account totals use user profiles; linked status is checked against associated records.</p></div><div class="toolbar"><input type="search" id="customer-account-search" placeholder="Search name, email, or status" value="${escapeHtml(filterText)}" aria-label="Search user accounts"></div></div>
         <div class="customer-account-summary"><div><span>Registered accounts</span><strong>${accounts.length}</strong></div><div><span>Linked records</span><strong>${linked}</strong></div><div><span>Not linked</span><strong>${unlinked}</strong></div></div>
-        <section class="panel"><div class="panel-header"><h3>Customer accounts</h3><span class="record-count">Showing ${filtered.length} of ${accounts.length}</span></div>${rows}</section>`;
+        <section class="panel"><div class="panel-header"><h3>User accounts</h3><span class="record-count">Showing ${filtered.length} of ${accounts.length}</span></div>${rows}</section>`;
     if (restoreFocus) {
         const search = viewContainer.querySelector('#customer-account-search');
         search?.focus();
@@ -1056,21 +1034,30 @@ function customerPurchaseTransactionsTable(purchases) {
     return `<div class="table-wrap"><table class="purchase-transactions-table"><thead><tr><th>ID</th><th>Customer</th><th>Processed By</th><th>Total Amount</th><th>Amount Paid</th><th>Balance</th><th>Status</th><th>Purchase Date</th><th>Actions</th></tr></thead><tbody>${purchases.map((purchase) => { const actualTotal = purchaseActualTotal(purchase); const balance = Math.max(0, actualTotal - Number(purchase.amountPaid || 0)); const paymentStatus = balance <= 0 ? 'paid' : Number(purchase.amountPaid || 0) > 0 ? 'partial' : 'unpaid'; return `<tr data-record-id="${escapeHtml(purchase.id)}" data-record-collection="customer-purchases"><td data-label="ID">${customerRecordSelectionCheckbox(purchase, 'customer-purchases')}<span title="${escapeHtml(purchase.id)}">${escapeHtml(String(purchase.id || '').slice(0, 8) || '—')}</span></td><td data-label="Customer">${escapeHtml(purchase.customerName || '—')}</td><td data-label="Processed By">${escapeHtml(purchase.processedBy || (purchase.userId === state.user?.uid ? state.profile?.fullName : '') || '—')}</td><td data-label="Total Amount">${money(actualTotal)}</td><td data-label="Amount Paid">${money(purchase.amountPaid)}</td><td data-label="Balance">${money(balance)}</td><td data-label="Status">${statusPill(paymentStatus)}</td><td data-label="Purchase Date">${shortDate(purchase.purchaseDate)}</td><td data-label="Actions"><div class="row-actions"><button class="small-button purchase-view-icon" type="button" data-action="customer-purchase-view" data-id="${escapeHtml(purchase.id)}" aria-label="View purchase items" title="View purchase items"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="small-button record-print-button" type="button" data-action="customer-purchase-receipt" data-id="${escapeHtml(purchase.id)}" aria-label="View or print receipt" title="View or print receipt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button>${purchase.userId === state.user?.uid ? `<button class="small-button catalog-icon-button" type="button" data-action="customer-purchase-edit" data-id="${escapeHtml(purchase.id)}" aria-label="Edit purchase" title="Edit purchase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z"/></svg></button><button class="small-button delete catalog-icon-button" type="button" data-action="customer-record-delete" data-kind="purchases" data-id="${escapeHtml(purchase.id)}" aria-label="Delete purchase" title="Delete purchase"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button>` : ''}</div></td></tr>`; }).join('')}</tbody></table></div>`;
 }
 
-async function renderCustomerTransactions(period = 'month', anchorDate = localDateInputValue(new Date())) {
-    const query = new URLSearchParams({ period, date: anchorDate });
+async function renderCustomerTransactions(from = state.customerDateFrom, to = state.customerDateTo) {
+    const selection = setCustomerDateSelection(from, to);
+    const query = new URLSearchParams();
+    if (selection.from) query.set('from', selection.from);
+    if (selection.to) query.set('to', selection.to);
     const result = await apiFetch(`/customer/transactions?${query}`);
     const totals = ['Purchase', 'Payment', 'Expense'].map((type) => {
         const entries = result.transactions.filter((item) => item.type === type);
         return { type, count: entries.length, amount: entries.reduce((sum, item) => sum + Number(item.amount || 0), 0) };
     });
-    const periodLabel = { day: 'Day', week: 'Week', month: 'Month', year: 'Year' }[period] || 'Month';
-    const summaries = totals.map((entry) => metric(`${entry.type}s`, money(entry.amount), `${entry.count} ${entry.count === 1 ? 'transaction' : 'transactions'} · ${periodLabel.toLowerCase()}`, entry.type === 'Purchase' ? '↗' : entry.type === 'Payment' ? '₱' : '↘')).join('');
+    const summaries = totals.map((entry) => metric(`${entry.type}s`, money(entry.amount), `${entry.count} ${entry.count === 1 ? 'transaction' : 'transactions'}`, entry.type === 'Purchase' ? '↗' : entry.type === 'Payment' ? '₱' : '↘')).join('');
     const rows = result.transactions.length ? `<div class="table-wrap"><table><thead><tr><th>DATE</th><th>TYPE</th><th>DETAILS</th><th>METHOD</th><th>AMOUNT</th><th>STATUS</th></tr></thead><tbody>${result.transactions.map((item) => `<tr><td>${shortDate(item.date)}</td><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.method)}</td><td>${money(item.amount)}</td><td>${statusPill(item.status)}</td></tr>`).join('')}</tbody></table></div>` : emptyState('No transactions in this period', 'Purchase, payment, and expense activity will appear here.');
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Transaction monitoring</h2><p>${periodLabel} · ${shortDate(result.from)} – ${shortDate(result.to)}</p></div><div class="transaction-filters"><label class="period-filter"><span>View</span><select id="transaction-period" aria-label="Transaction period"><option value="day" ${period === 'day' ? 'selected' : ''}>Day</option><option value="week" ${period === 'week' ? 'selected' : ''}>Week</option><option value="month" ${period === 'month' ? 'selected' : ''}>Month</option><option value="year" ${period === 'year' ? 'selected' : ''}>Year</option></select></label><label class="period-filter transaction-date-filter"><span>Calendar date</span><input id="transaction-date" type="date" value="${escapeHtml(anchorDate)}" aria-label="Choose a day, week, month, or year"></label></div></div><div class="metrics transaction-summary">${summaries}</div><section class="panel">${rows}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Transaction monitoring</h2><p>${result.from ? shortDate(result.from) : 'Any date'} – ${result.to ? shortDate(result.to) : 'Any date'}</p></div><div class="transaction-filters">${customerDateRangeFilter(selection, 'transaction')}</div></div><div class="metrics transaction-summary">${summaries}</div><section class="panel">${rows}</section>`;
 }
 
 function localDateInputValue(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function defaultMonthRange() {
+    const current = new Date();
+    const from = new Date(current.getFullYear(), current.getMonth(), 1);
+    const to = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+    return { from: localDateInputValue(from), to: localDateInputValue(to) };
 }
 
 function setMobileNavigationOpen(open) {
@@ -1083,22 +1070,22 @@ function setMobileNavigationOpen(open) {
     document.body.classList.toggle('mobile-nav-open', open);
 }
 
-function setCustomerCalendarSelection(period = state.customerCalendarPeriod || 'month', date = state.customerCalendarDate || localDateInputValue(new Date())) {
-    state.customerCalendarPeriod = period;
-    state.customerCalendarDate = date;
-    return { period, date };
+function setCustomerDateSelection(from = state.customerDateFrom, to = state.customerDateTo) {
+    state.customerDateFrom = from;
+    state.customerDateTo = to;
+    return { from, to };
 }
 
-function customerCalendarFilter({ period, date }) {
-    return `<label class="period-filter"><span>View</span><select id="customer-calendar-period" aria-label="Calendar period"><option value="day" ${period === 'day' ? 'selected' : ''}>Day</option><option value="week" ${period === 'week' ? 'selected' : ''}>Week</option><option value="month" ${period === 'month' ? 'selected' : ''}>Month</option><option value="year" ${period === 'year' ? 'selected' : ''}>Year</option></select></label><label class="period-filter transaction-date-filter"><span>Calendar date</span><input id="customer-calendar-date" type="date" value="${escapeHtml(date)}" aria-label="Choose a day, week, month, or year"></label>`;
+function customerDateRangeFilter({ from, to }, prefix = 'customer-range') {
+    return `<label class="period-filter"><span>From</span><input id="${prefix}-from" type="date" value="${escapeHtml(from)}" aria-label="Start date"></label><label class="period-filter"><span>To</span><input id="${prefix}-to" type="date" value="${escapeHtml(to)}" aria-label="End date"></label>`;
 }
 
-function renderCustomerCalendarView(period, date) {
-    if (state.view === 'my-purchases') return renderCustomerPurchases(period, date, document.querySelector('#customer-purchase-search')?.value || '', false);
-    if (state.view === 'customer-payments') return renderCustomerPayments(period, date);
-    if (state.view === 'customer-payment-report') return renderCustomerPaymentReport(period, date);
-    if (state.view === 'customer-expenses') return renderCustomerExpenses(period, date);
-    if (state.view === 'customer-records') return renderCustomerRecords(state.customerRecordFilter, false, period, date);
+function renderCustomerCalendarView(from, to) {
+    if (state.view === 'my-purchases') return renderCustomerPurchases(from, to, document.querySelector('#customer-purchase-search')?.value || '', false);
+    if (state.view === 'customer-payments') return renderCustomerPayments(from, to);
+    if (state.view === 'customer-payment-report') return renderCustomerPaymentReport(from, to);
+    if (state.view === 'customer-expenses') return renderCustomerExpenses(from, to);
+    if (state.view === 'customer-records') return renderCustomerRecords(state.customerRecordFilter, false, from, to);
 }
 
 function emptyState(title, message) {
@@ -1132,6 +1119,8 @@ async function renderCollectionView(name, filterText = '', { refresh = true, res
         });
     }
     rows.sort((a, b) => String(b.createdAt || b.purchaseDate || b.expenseDate || b.paymentDate || '').localeCompare(String(a.createdAt || a.purchaseDate || a.expenseDate || a.paymentDate || '')));
+    const dateField = { purchases: 'purchaseDate', payments: 'paymentDate', expenses: 'expenseDate' }[name];
+    if (dateField) rows = filterRecordsByDateRange(rows, dateField, state.workspaceDateFrom, state.workspaceDateTo);
     if (filterText) {
         const needle = filterText.toLowerCase();
         rows = rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(needle)));
@@ -1150,7 +1139,7 @@ async function renderCollectionView(name, filterText = '', { refresh = true, res
 
     const selectAllChecked = rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
     const bulkActions = selectionActive ? `<label class="record-select-all"><input id="record-select-all" type="checkbox" ${selectAllChecked ? 'checked' : ''}><span>Select all</span></label><button class="bulk-delete-button" type="button" data-action="bulk-delete" data-collection="${name}" aria-label="Delete selected records" title="Delete selected records" ${selectedIds.size ? '' : 'disabled'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-.9 14H5L4 6m5 4v6m6-6v6"/></svg><span>${selectedIds.size || ''}</span></button><button class="text-button selection-cancel" type="button" data-action="customer-selection-cancel">Cancel</button>` : '';
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>${definition.title}</h2><p>${definition.description}</p></div><div class="toolbar record-toolbar"><input type="search" id="record-search" placeholder="Search ${definition.title.toLowerCase()}" value="${escapeHtml(filterText)}" aria-label="Search ${definition.title}">${bulkActions}<button class="button" data-action="new" data-collection="${name}">${addLabel}</button></div></div><section class="panel">${rowsHtml}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>${definition.title}</h2><p>${definition.description}</p></div><div class="toolbar record-toolbar"><input type="search" id="record-search" placeholder="Search ${definition.title.toLowerCase()}" value="${escapeHtml(filterText)}" aria-label="Search ${definition.title}">${dateField ? `<div class="transaction-filters">${customerDateRangeFilter({ from: state.workspaceDateFrom, to: state.workspaceDateTo }, 'workspace-range')}</div>` : ''}${bulkActions}<button class="button" data-action="new" data-collection="${name}">${addLabel}</button></div></div><section class="panel">${rowsHtml}</section>`;
     if (restoreFocus) {
         const search = viewContainer.querySelector('#record-search');
         search?.focus();
@@ -1389,7 +1378,7 @@ function renderApp() {
     updateAvatar(document.querySelector('#account-avatar'));
     document.querySelectorAll('.admin-only').forEach((item) => { item.hidden = !mainAdmin || item.classList.contains('workspace-only'); });
     document.querySelector('#admin-nav-label').hidden = !mainAdmin;
-    if (customer && !['customer-dashboard', 'catalog', 'my-purchases', 'transactions', 'customer-profile', 'customer-payments', 'customer-payment-report', 'customer-expenses', 'customer-records'].includes(state.view)) state.view = 'customer-dashboard';
+    if (customer && !['customer-dashboard', 'catalog', 'my-purchases', 'transactions', 'customer-profile', 'customer-payments', 'customer-payment-report', 'customer-expenses', 'customer-records', 'help-center'].includes(state.view)) state.view = 'customer-dashboard';
     if (!customer && ['customer-dashboard', 'catalog', 'my-purchases', 'transactions'].includes(state.view)) state.view = 'dashboard';
     setView(state.view);
 }
@@ -1634,20 +1623,6 @@ document.addEventListener('click', async (event) => {
         }
         if (action === 'new') return openForm(name);
         if (action === 'new-customer-purchase') return openCustomerPurchaseForm();
-        if (action === 'customer-catalog-filter') {
-            state.customerCatalogFilter = actionButton.dataset.filter || 'all';
-            const filter = state.customerCatalogFilter;
-            viewContainer.querySelectorAll('[data-action="customer-catalog-filter"]').forEach((button) => {
-                const active = button.dataset.filter === filter;
-                button.classList.toggle('is-active', active);
-                button.setAttribute('aria-pressed', String(active));
-            });
-            const productsSection = viewContainer.querySelector('.catalog-products-section');
-            const plansSection = viewContainer.querySelector('.catalog-plans-section');
-            if (productsSection) productsSection.hidden = filter === 'plans';
-            if (plansSection) plansSection.hidden = filter === 'products';
-            return;
-        }
         if (action === 'customer-product-toggle') {
             const status = actionButton.dataset.status;
             await apiFetch(`/customer/products/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
@@ -1697,7 +1672,11 @@ document.addEventListener('click', async (event) => {
         }
         if (action === 'customer-purchase-edit') return openCustomerPurchaseEditForm(id);
         if (action === 'customer-payment-edit') return openCustomerPaymentEditForm(id);
-        if (action === 'customer-expense-edit') return openCustomerExpenseForm(state.customerExpenseData?.find((expense) => expense.id === id));
+        if (action === 'customer-expense-edit') {
+            const expense = state.customerExpenseData?.find((row) => row.sourceType === 'expense' && row.sourceId === id);
+            if (!expense) throw new Error('Expense record could not be found. Refresh the page and try again.');
+            return openCustomerExpenseForm(expense);
+        }
         if (action === 'customer-record-delete') {
             const kind = actionButton.dataset.kind;
             if (!window.confirm('Delete this record? This cannot be undone.')) return;
@@ -1783,9 +1762,9 @@ document.addEventListener('keydown', (event) => {
 });
 
 function renderRecordCollectionSelection(collection) {
-    if (collection === 'customer-purchases') return renderCustomerPurchases(state.customerCalendarPeriod, state.customerCalendarDate, document.querySelector('#customer-purchase-search')?.value || '', false);
-    if (collection === 'customer-payments') return renderCustomerPayments(state.customerCalendarPeriod, state.customerCalendarDate);
-    if (collection === 'customer-expenses') return renderCustomerExpenses(state.customerCalendarPeriod, state.customerCalendarDate);
+    if (collection === 'customer-purchases') return renderCustomerPurchases(state.customerDateFrom, state.customerDateTo, document.querySelector('#customer-purchase-search')?.value || '', false);
+    if (collection === 'customer-payments') return renderCustomerPayments(state.customerDateFrom, state.customerDateTo);
+    if (collection === 'customer-expenses') return renderCustomerExpenses(state.customerDateFrom, state.customerDateTo);
     return renderCollectionView(collection, document.querySelector('#record-search')?.value || '', { refresh: false });
 }
 
@@ -1820,7 +1799,7 @@ document.addEventListener('input', (event) => {
     }
     if (event.target.id === 'customer-record-search') {
         state.customerRecordSearch = event.target.value;
-        renderCustomerRecords(state.customerRecordFilter, false, state.customerCalendarPeriod, state.customerCalendarDate, true).catch((error) => notify(error.message, true));
+        renderCustomerRecords(state.customerRecordFilter, false, state.customerDateFrom, state.customerDateTo, true).catch((error) => notify(error.message, true));
     }
     if (event.target.id === 'record-search') {
         state.recordSelection = { collection: state.view, ids: new Set(), active: false };
@@ -1828,7 +1807,7 @@ document.addEventListener('input', (event) => {
     }
     if (event.target.id === 'customer-purchase-search') {
         state.recordSelection = { collection: 'customer-purchases', ids: new Set(), active: false };
-        renderCustomerPurchases(state.customerCalendarPeriod, state.customerCalendarDate, event.target.value, false, true).catch((error) => notify(error.message, true));
+        renderCustomerPurchases(state.customerDateFrom, state.customerDateTo, event.target.value, false, true).catch((error) => notify(error.message, true));
     }
     if (event.target.id === 'customer-account-search') renderCustomerAccounts(event.target.value, true, false).catch((error) => notify(error.message, true));
     if (event.target.id === 'registered-user-search') renderUserManagement(event.target.value, false).catch((error) => notify(error.message, true));
@@ -1861,20 +1840,31 @@ document.addEventListener('change', (event) => {
         }
         return;
     }
-    if (event.target.id === 'customer-calendar-period' || event.target.id === 'customer-calendar-date') {
-        const period = document.querySelector('#customer-calendar-period')?.value || 'month';
-        const date = document.querySelector('#customer-calendar-date')?.value;
-        if (date) renderCustomerCalendarView(period, date)?.catch((error) => notify(error.message, true));
-    }
-    if (event.target.id === 'registered-user-period' || event.target.id === 'registered-user-date') {
-        state.registeredUserPeriod = document.querySelector('#registered-user-period')?.value || 'all';
-        state.registeredUserDate = document.querySelector('#registered-user-date')?.value || localDateInputValue(new Date());
-        renderUserManagement(state.registeredUserSearch, false).catch((error) => notify(error.message, true));
-    }
-    if (event.target.id === 'transaction-period' || event.target.id === 'transaction-date') {
-        const period = document.querySelector('#transaction-period')?.value || 'month';
-        const anchorDate = document.querySelector('#transaction-date')?.value;
-        if (anchorDate) renderCustomerTransactions(period, anchorDate).catch((error) => notify(error.message, true));
+    const rangePrefix = ['customer-range-from', 'customer-range-to'].includes(event.target.id) ? 'customer-range'
+        : ['transaction-from', 'transaction-to'].includes(event.target.id) ? 'transaction'
+            : ['registered-user-from', 'registered-user-to'].includes(event.target.id) ? 'registered-user'
+                : ['workspace-range-from', 'workspace-range-to'].includes(event.target.id) ? 'workspace-range'
+                    : '';
+    if (rangePrefix) {
+        const from = document.querySelector(`#${rangePrefix}-from`)?.value || '';
+        const to = document.querySelector(`#${rangePrefix}-to`)?.value || '';
+        if (from && to && from > to) {
+            notify('The start date must be on or before the end date.', true);
+            return;
+        }
+        if (rangePrefix === 'registered-user') {
+            state.registeredUserFrom = from;
+            state.registeredUserTo = to;
+            renderUserManagement(state.registeredUserSearch, false).catch((error) => notify(error.message, true));
+        } else if (rangePrefix === 'workspace-range') {
+            state.workspaceDateFrom = from;
+            state.workspaceDateTo = to;
+            renderCollectionView(state.view, document.querySelector('#record-search')?.value || '', { refresh: false, restoreFocus: true }).catch((error) => notify(error.message, true));
+        } else {
+            setCustomerDateSelection(from, to);
+            if (rangePrefix === 'transaction') renderCustomerTransactions(from, to).catch((error) => notify(error.message, true));
+            else renderCustomerCalendarView(from, to)?.catch((error) => notify(error.message, true));
+        }
     }
     if (event.target.closest('[data-record-form="customer-purchase"]')) {
         if (event.target.matches('[name="productId"]')) updateCustomerPurchasePlanDetails(event.target.closest('.customer-purchase-line'));

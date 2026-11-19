@@ -2,7 +2,7 @@ import { firestore, timestamp } from '../services/firestore.js';
 import { purchaseReceiptPdf, purchaseWithProcessorName, removePurchaseRecord } from './purchases.js';
 import { customerOwnsPurchase, paymentTotalsAfterChange, paymentWithProcessorName } from './payments.js';
 import { ensureCustomerAccountProfile } from '../services/customer-account.js';
-import { transactionDateRange } from '../services/reporting.js';
+import { normalizeDateRange } from '../services/reporting.js';
 import { customerPlanSchema, customerPlanStateSchema, customerProductStatusSchema, customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, idSchema, parse, paymentSchema, productSchema, purchaseSchema } from '../services/validation.js';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -476,9 +476,7 @@ export async function customerPurchaseReceipt(req, res, next) {
 export async function listCustomerTransactions(req, res, next) {
     try {
         const customerId = await ownedCustomerId(req);
-        const period = String(req.query.period || 'month');
-        const anchorDate = String(req.query.date || new Date().toISOString().slice(0, 10));
-        const { from, to } = transactionDateRange(period, anchorDate);
+        const { from, to } = normalizeDateRange(req.query.from, req.query.to);
 
         const [purchases, payments, expenses] = await Promise.all([
             customerOwnedRows('purchases', customerId, req.user.uid),
@@ -492,7 +490,7 @@ export async function listCustomerTransactions(req, res, next) {
         ].filter((transaction) => transaction.date >= from && transaction.date <= to)
             .sort((left, right) => right.date.localeCompare(left.date));
 
-        res.json({ period, anchorDate, from, to, transactions });
+        res.json({ from, to, transactions });
     } catch (error) { next(error); }
 }
 

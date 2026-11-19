@@ -4,11 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f4f6f3">
-    <title>Fintrack | Customer access</title>
+    <title>Fintrack | User access</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/firebase-app.css?v=20261001-product-actions">
+    <link rel="stylesheet" href="assets/css/firebase-app.css?v=20261119-overview-summary-cards">
 </head>
 <body>
     <div id="auth-screen" class="auth-screen"></div>
@@ -32,7 +32,7 @@
                 <button class="nav-item workspace-only" data-view="expenses"><span class="nav-icon">↘</span>Expenses</button>
                 <button class="nav-item workspace-only" data-view="reports"><span class="nav-icon">▥</span>Reports</button>
                 <button class="nav-item admin-only" data-view="users" hidden><span class="nav-icon">♙</span>User Management</button>
-                <button class="nav-item workspace-only admin-only" data-view="customer-accounts" hidden><span class="nav-icon">◉</span>Customer accounts</button>
+                <button class="nav-item workspace-only admin-only" data-view="customer-accounts" hidden><span class="nav-icon">◉</span>User accounts</button>
                 <button class="nav-item customer-only" data-view="customer-dashboard" hidden><span class="nav-icon">▦</span>Overview</button>
                 <div class="customer-nav-group customer-only" hidden>
                     <p class="customer-nav-label">PURCHASES &amp; PAYMENTS</p>
@@ -48,7 +48,7 @@
                 </div>
                 <div class="customer-nav-group customer-only" hidden>
                     <p class="customer-nav-label">MANAGEMENT</p>
-                    <button class="nav-item" data-view="customer-contacts"><span class="nav-icon">◉</span>My customers</button>
+                    <button class="nav-item" data-view="help-center"><span class="nav-icon">?</span>Help Center</button>
                 </div>
             </nav>
             <div class="sidebar-bottom">
@@ -88,6 +88,6 @@
         }
     </script>
     <script src="assets/js/vendor/chart.umd.js"></script>
-    <script type="module" src="assets/js/main.js?v=20261001-registered-user-columns"></script>
+    <script type="module" src="assets/js/main.js?v=20261119-fullwidth-expense-chart"></script>
 </body>
 </html>
