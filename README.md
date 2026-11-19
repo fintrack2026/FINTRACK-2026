@@ -75,7 +75,7 @@ When a plan is selected in a purchase, its item prices can be recorded as actual
 
 ### Help Center
 
-The **Help Center** provides in-app tutorials for creating a plan, recording a purchase or payment, and reviewing date-filtered records.
+The **Help Center** explains the User Overview's budget and expense summaries, how to create a plan and record purchases or payments, and how to review records. It also clarifies that each purchase appears once, how paid and unpaid amounts are shown, and how to use the **From** and **To** date filters.
 
 ### Purchase Transactions
 
@@ -86,7 +86,7 @@ The **Help Center** provides in-app tutorials for creating a plan, recording a p
 5. For a plan, review or change the actual prices for included items.
 6. Review the calculated total, add optional remarks, and choose **Create transaction**.
 
-The transaction appears in the purchase list with its total, amount paid, remaining balance, payment status, and date. Purchases are also automatically listed in **My expenses**. Use the **From** and **To** fields to filter by a date range and search to find a transaction. Open a row's item view or receipt actions to inspect the transaction; the receipt can be opened or printed. Transactions created by the account can be edited or deleted. A purchase with linked payments must have those payments deleted first.
+The transaction appears in the purchase list with its total, amount paid, remaining balance, payment status, and date. Purchases and their payments are recorded automatically in **My expenses** and **All records**; there is no need to enter them again. Use the **From** and **To** fields to filter by a date range and search to find a transaction. Open a row's item view or receipt actions to inspect the transaction; the receipt can be opened or printed. Transactions created by the account can be edited or deleted. A purchase with linked payments must have those payments deleted first.
 
 To create the first transaction, create at least one plan under **My plan purchase**. The signed-in user's account is automatically selected for the transaction.
 
@@ -103,7 +103,7 @@ The payment list has **From** and **To** date filters and displays the related t
 
 ### My expenses
 
-Purchase transactions, payments, and any separate manually recorded expenses appear here automatically. Each purchase is shown only once: unpaid or partially paid purchases appear as **Purchase**, and fully paid purchases appear as **Payment** with the total amount paid. Partial payments are included in the Purchase row's paid amount and do not create duplicate rows. There is no need to re-enter a purchase or payment. Choose **Add expense** only for other costs, such as supplies or utilities. Use **From** and **To** to filter by date range; manually added expenses can be edited or deleted.
+Purchase transactions and payments appear here automatically. Each purchase is shown only once: unpaid or partially paid purchases appear as **Purchase**, and fully paid purchases appear as **Payment** with the total amount paid. Partial payments are included in the Purchase row's paid amount and do not create duplicate rows. There is no need to re-enter a purchase or payment. Use **From** and **To** to filter by date range. Previously recorded separate expenses, if any, remain visible here.
 
 ### Payment summary
 
@@ -111,7 +111,7 @@ Purchase transactions, payments, and any separate manually recorded expenses app
 
 ### All records
 
-**All records** combines the account's purchases, payments, and expenses into a date-filtered view, with one row per purchase transaction. Unpaid or partially paid purchases appear as **Purchase**; fully paid purchases appear as **Payment** and replace the Purchase entry. Tabs let the customer show all records, only purchases, only payments, only expenses, or outstanding balances. Search and the **From** and **To** date range help locate records; available row actions depend on record ownership and type.
+**All records** combines the account's purchases, payments, and expenses into a date-filtered view, with one row per purchase transaction. Unpaid or partially paid purchases appear as **Purchase**; fully paid purchases appear as **Payment** and replace the Purchase entry. Purchase and payment transaction charts summarize their totals in the selected range. Summary cards show total purchases, total payments, and outstanding balance. Tabs let the user show all records, only purchases, only payments, or outstanding balances. Search and the **From** and **To** date range help locate records; available row actions depend on record ownership and type.
 
 ### Personal information
 
@@ -173,9 +173,11 @@ Passwords are handled by Firebase Authentication and are never displayed by FinT
 - A new purchase starts with zero paid and its full total outstanding (unless its total is zero).
 - Payments belong to a purchase. Each saved payment reduces that purchase's outstanding balance.
 - A purchase is **unpaid** before any amount is paid, **partial** while a balance remains after payment, and **paid** when the balance reaches zero.
+- In **My expenses** and **All records**, each purchase is shown only once. Unpaid and partially paid purchases appear as **Purchase**; linked payment amounts are included in that row. Once fully paid, the purchase appears as one **Payment** row for the total paid, replacing the Purchase row.
+- Paid and Total Expenses exclude unpaid balances. Partial transactions contribute only the amount actually paid; the remaining balance is counted as Unpaid. Separately recorded expenses are included in the paid total.
 - Deleting a payment restores its amount to the purchase balance. Delete payments before deleting their linked purchase.
 - Customer-created catalog items and contacts belong to that customer account. They are distinct from workspace products and customers.
-- Dates in transaction and report views filter records by their respective purchase, payment, or expense date.
+- User-facing record views use **From** and **To** date-range filters. Purchases, payments, and expenses are filtered using their applicable dates.
 
 ## Privacy and security
 
@@ -194,7 +196,7 @@ Passwords are handled by Firebase Authentication and are never displayed by FinT
 | Customer cannot open customer sections | Sign in using Customer access, not Login as Admin. Confirm the account is active and its profile exists. |
 | Staff cannot open workspace sections | Sign in using Login as Admin and confirm Firebase has a `users/{uid}` profile with role `staff` and active status. |
 | Main admin cannot see system administration | Confirm the signed-in account's UID matches `MAIN_ADMIN_UID` and its profile role is `admin`. |
-| Cannot create a purchase | Ensure there is an active product, service, or plan, enter a valid date and quantity, and check product stock. Customers must choose their own account or a contact they own. |
+| Cannot create a purchase | Ensure there is an active product, service, or plan, enter a valid date and quantity, and check product stock. The signed-in user's account is selected automatically as the purchaser. |
 | Cannot record a payment | Select a purchase that still has a balance and enter a positive amount no greater than that balance. |
 | Changes are not visible after deployment | Confirm the latest version is deployed and reload the app. The static page and main script are served with cache revalidation/no-store headers. |
 

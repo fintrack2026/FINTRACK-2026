@@ -439,6 +439,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .record-overview > div > strong { grid-column: 1; grid-row: 2; overflow: hidden; color: var(--ink); font: 700 17px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .record-browser { overflow: hidden; }
 .customer-record-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.metrics.record-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .customer-record-charts .panel-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .customer-record-chart-canvas { position: relative; height: 230px; padding: 12px 16px 16px; }
 .customer-record-chart-canvas canvas { display: block; width: 100% !important; max-width: 100%; }
@@ -466,7 +467,7 @@ tbody tr:last-child td { border-bottom: 0; }
     body.print-customer-records .panel { border: 1px solid #cbd5e1; border-radius: 4px; color: #17212f; background: #fff !important; box-shadow: none; }
     body.print-customer-records .panel-header { border-color: #cbd5e1; padding: 9px 10px; }
     body.print-customer-records .panel-header h3, body.print-customer-records .panel-header p, body.print-customer-records .record-count { color: #334155; }
-    body.print-customer-records .record-overview-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-bottom: 12px; }
+    body.print-customer-records .record-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-bottom: 12px; }
     body.print-customer-records .record-overview-metrics > article { min-height: 58px; padding: 8px; border-color: #cbd5e1; border-left-width: 2px; border-radius: 4px; color: #17212f !important; background: #fff !important; box-shadow: none; }
     body.print-customer-records .record-overview-metrics .metric-top, body.print-customer-records .record-overview-metrics .metric-note { color: #475569 !important; font-size: 9px; }
     body.print-customer-records .record-overview-metrics .metric-value { color: #111827 !important; font-size: 13px; }
@@ -574,6 +575,7 @@ button.payment-method-card { cursor: pointer; }
     .sidebar { width: 205px; }
     .main-area { margin-left: 205px; padding-right: 24px; padding-left: 24px; }
     .metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .metrics.record-overview-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .payment-summary-methods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .purchase-transactions-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .purchase-transactions-table tbody { display: grid; gap: 10px; padding: 10px; }

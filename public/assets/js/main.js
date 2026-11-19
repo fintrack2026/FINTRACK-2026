@@ -537,12 +537,13 @@ function renderCustomerProfile() {
 }
 
 function renderHelpCenter() {
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Help Center</h2><p>Quick guides for managing your plans, purchases, payments, and records.</p></div></div>
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>Help Center</h2><p>Step-by-step guides for your overview, plans, purchases, payments, and records.</p></div></div>
         <div class="help-center-grid">
+            <section class="panel"><div class="panel-header"><h3>Understand your overview</h3></div><div class="panel-body"><ol><li>Check <strong>Allocated Budget</strong> for the budget in your active plans and use the monthly chart to follow paid expenses.</li><li><strong>Paid</strong> reflects amounts actually paid; <strong>Unpaid</strong> shows remaining purchase balances.</li><li><strong>Total Expenses</strong> includes paid amounts only, not unpaid balances.</li></ol></div></section>
             <section class="panel"><div class="panel-header"><h3>Create a plan</h3></div><div class="panel-body"><ol><li>Open <strong>My plan purchase</strong> and select <strong>Add Plan</strong>.</li><li>Enter the plan name, date, allocated budget, and estimated items.</li><li>Save the plan to see its estimated total and remaining budget.</li></ol></div></section>
-            <section class="panel"><div class="panel-header"><h3>Record a purchase</h3></div><div class="panel-body"><ol><li>Open <strong>Purchase Transactions</strong> and choose <strong>Create transaction</strong>.</li><li>Your account is selected automatically. Choose a plan or item, then set the date and quantity.</li><li>Review the total and save. The purchase appears automatically in <strong>My expenses</strong>.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Record a purchase</h3></div><div class="panel-body"><ol><li>Open <strong>Purchase Transactions</strong> and choose <strong>Create transaction</strong>.</li><li>Your account is selected automatically. Choose a plan or item, then set the date and quantity.</li><li>Review the total and save. The purchase appears automatically in <strong>My expenses</strong> and <strong>All records</strong>.</li></ol></div></section>
             <section class="panel"><div class="panel-header"><h3>Record a payment</h3></div><div class="panel-body"><ol><li>Open <strong>Payments</strong> and select <strong>Record payment</strong>.</li><li>Choose a purchase with an outstanding balance, enter the amount, date, and method.</li><li>Save. The payment appears automatically in <strong>My expenses</strong>; paid and unpaid balances update from the amount actually paid.</li></ol></div></section>
-            <section class="panel"><div class="panel-header"><h3>Review records and expenses</h3></div><div class="panel-body"><ol><li>Use <strong>From</strong> and <strong>To</strong> date fields to narrow a list to a date range.</li><li><strong>My expenses</strong> includes purchases, payment activity, and any separate expenses you add.</li><li>Paid totals include completed payments and recorded expenses; unpaid balances are excluded from Total Expenses.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Review records and expenses</h3></div><div class="panel-body"><ol><li>Each purchase appears once in <strong>My expenses</strong> and <strong>All records</strong>. Unpaid or partially paid purchases stay as <strong>Purchase</strong>; partial payments appear in its Paid amount.</li><li>When fully paid, the transaction appears as one <strong>Payment</strong> record for the total paid, replacing the Purchase entry.</li><li>Use <strong>From</strong> and <strong>To</strong> to filter dates. Purchases and payments appear automatically; do not re-enter them as expenses.</li></ol></div></section>
         </div>`;
 }
 
@@ -578,8 +579,8 @@ async function renderCustomerExpenses(from, to) {
     const { purchases, payments, expenses: manualExpenses } = await apiFetch('/customer/records');
     const expenses = filterRecordsByDateRange(customerExpenseEntries(purchases, payments, manualExpenses), 'date', selection.from, selection.to);
     state.customerExpenseData = expenses;
-    viewContainer.innerHTML = `<div class="view-heading"><div><h2>My expenses</h2><p>Each purchase appears once: unpaid or partial purchases show as Purchases, and fully paid purchases show as Payments.</p></div><div class="transaction-filters">${customerDateRangeFilter(selection)}</div><button class="button" data-action="new-customer-expense">Add expense</button></div>
-        <section class="panel">${expenses.length ? customerExpenseTable(expenses) : emptyState('No expenses in this period', 'Purchases, payments, and other expenses will appear here.')}</section>`;
+    viewContainer.innerHTML = `<div class="view-heading"><div><h2>My expenses</h2><p>Purchases and payments are recorded automatically. Each purchase appears once: unpaid or partial purchases show as Purchases, and fully paid purchases show as Payments.</p></div><div class="transaction-filters">${customerDateRangeFilter(selection)}</div></div>
+        <section class="panel">${expenses.length ? customerExpenseTable(expenses) : emptyState('No expenses in this period', 'Purchases and payments will appear here automatically.')}</section>`;
 }
 
 async function renderCustomerRecords(filter = state.customerRecordFilter, refresh = true, from, to, restoreSearchFocus = false) {
@@ -588,7 +589,6 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
     if (refresh || !state.customerRecordData) state.customerRecordData = await apiFetch('/customer/records');
     const purchases = filterRecordsByDateRange(state.customerRecordData.purchases, 'purchaseDate', selection.from, selection.to);
     const payments = filterRecordsByDateRange(state.customerRecordData.payments, 'paymentDate', selection.from, selection.to);
-    const expenses = filterRecordsByDateRange(state.customerRecordData.expenses, 'expenseDate', selection.from, selection.to);
     const records = filterRecordsByDateRange(
         customerExpenseEntries(state.customerRecordData.purchases, state.customerRecordData.payments, state.customerRecordData.expenses),
         'date',
@@ -609,16 +609,13 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
         .map((record) => ({ id: record.id, date: record.date, type: 'Balance', description: record.description, amount: record.balanceAmount, status: record.status }));
     const purchaseRows = records.filter((record) => record.type === 'Purchase');
     const paymentRows = records.filter((record) => record.type === 'Payment');
-    const expenseRows = records.filter((record) => record.type === 'Expense');
     const purchaseTotal = purchases.reduce((sum, purchase) => sum + purchaseActualTotal(purchase), 0);
     const paymentTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
     const outstandingTotal = outstanding.reduce((sum, row) => sum + row.amount, 0);
     const filters = [
         { id: 'all', label: 'All', count: records.length, rows: records },
         { id: 'purchases', label: 'Purchases', count: purchaseRows.length, rows: purchaseRows },
         { id: 'payments', label: 'Payments', count: paymentRows.length, rows: paymentRows },
-        { id: 'expenses', label: 'Expenses', count: expenseRows.length, rows: expenseRows },
         { id: 'outstanding', label: 'Outstanding', count: outstanding.length, rows: outstanding }
     ];
     const selected = filters.find((item) => item.id === filter) || filters[0];
@@ -627,18 +624,18 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
     const table = visibleRows.length ? customerRecordTable(visibleRows) : emptyState(needle ? 'No matching records' : `No ${selected.label.toLowerCase()} yet`, needle ? 'Try a different search term.' : 'New records will appear here.');
     viewContainer.innerHTML = `<div class="print-record-heading"><h2>FinTrack · All records</h2><p>${selected.label} · ${shortDate(selection.from)} – ${shortDate(selection.to)}${needle ? ` · Search: ${escapeHtml(state.customerRecordSearch)}` : ''} · ${visibleRows.length} records</p></div>
         <div class="view-heading"><div><h2>All records</h2><p>Each purchase appears once: unpaid or partial as Purchase, fully paid as Payment.</p></div><div class="transaction-filters customer-record-filters">${customerDateRangeFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
-        <div class="customer-record-charts"><section class="panel chart-panel"><div class="panel-header"><div><h3>Purchase Transaction Records</h3><p>Purchase totals in selected range</p></div><span class="record-count">${purchases.length} ${purchases.length === 1 ? 'transaction' : 'transactions'} · ${money(purchaseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-purchase-record-chart" role="img" aria-label="Purchase transaction totals for the selected date range"></canvas></div></section><section class="panel chart-panel"><div class="panel-header"><div><h3>Expenses</h3><p>Paid expenses in selected range</p></div><span class="record-count">${expenses.length} ${expenses.length === 1 ? 'expense' : 'expenses'} · ${money(expenseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-expense-record-chart" role="img" aria-label="Expense totals for the selected date range"></canvas></div></section></div>
-        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchaseRows.length} ${purchaseRows.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total payments', money(paymentTotal), `${paymentRows.length} ${paymentRows.length === 1 ? 'payment record' : 'payment records'}`, '✓')}${metric('Total expenses', money(expenseTotal), `${expenseRows.length} ${expenseRows.length === 1 ? 'expense record' : 'expense records'}`, '↘')}${metric('Outstanding balance', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
+        <div class="customer-record-charts"><section class="panel chart-panel"><div class="panel-header"><div><h3>Purchase Transaction Records</h3><p>Purchase totals in selected range</p></div><span class="record-count">${purchases.length} ${purchases.length === 1 ? 'transaction' : 'transactions'} · ${money(purchaseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-purchase-record-chart" role="img" aria-label="Purchase transaction totals for the selected date range"></canvas></div></section><section class="panel chart-panel"><div class="panel-header"><div><h3>Payment Transaction Records</h3><p>Payment totals in selected range</p></div><span class="record-count">${payments.length} ${payments.length === 1 ? 'payment transaction' : 'payment transactions'} · ${money(paymentTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-payment-record-chart" role="img" aria-label="Payment transaction totals for the selected date range"></canvas></div></section></div>
+        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchaseRows.length} ${purchaseRows.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total payments', money(paymentTotal), `${paymentRows.length} ${paymentRows.length === 1 ? 'payment record' : 'payment records'}`, '✓')}${metric('Outstanding balance', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
         <section class="panel record-browser"><div class="record-filters" role="group" aria-label="Filter records">${filters.map((item) => `<button class="record-filter${item.id === selected.id ? ' is-active' : ''}" type="button" aria-pressed="${item.id === selected.id}" data-action="customer-record-filter" data-filter="${item.id}">${item.label}<span>${item.count}</span></button>`).join('')}<input type="search" id="customer-record-search" placeholder="Search records" value="${escapeHtml(state.customerRecordSearch)}" aria-label="Search ${selected.label.toLowerCase()} records"></div><div class="panel-header"><h3>${selected.label}</h3><span class="record-count">${needle ? `${visibleRows.length} of ` : ''}${selected.rows.length} ${selected.rows.length === 1 ? 'record' : 'records'}</span></div>${table}</section>`;
     if (restoreSearchFocus) {
         const search = viewContainer.querySelector('#customer-record-search');
         search?.focus();
         search?.setSelectionRange(state.customerRecordSearch.length, state.customerRecordSearch.length);
     }
-    drawCustomerRecordCharts(purchases, expenses, selection);
+    drawCustomerRecordCharts(purchases, payments, selection);
 }
 
-function drawCustomerRecordCharts(purchases, expenses, selection) {
+function drawCustomerRecordCharts(purchases, payments, selection) {
     customerRecordCharts.forEach((chart) => chart.destroy());
     customerRecordCharts = [];
     if (!window.Chart) return;
@@ -676,7 +673,7 @@ function drawCustomerRecordCharts(purchases, expenses, selection) {
     };
     const charts = [
         { id: 'customer-purchase-record-chart', records: purchases, field: 'purchaseDate', color: '#63d2c0' },
-        { id: 'customer-expense-record-chart', records: expenses, field: 'expenseDate', color: '#ef8b78' }
+        { id: 'customer-payment-record-chart', records: payments, field: 'paymentDate', color: '#79a9e8' }
     ];
     for (const chart of charts) {
         const canvas = document.getElementById(chart.id);
@@ -1712,7 +1709,6 @@ document.addEventListener('click', async (event) => {
                     return;
                 }
         if (action === 'new-customer-payment') return openCustomerPaymentForm();
-        if (action === 'new-customer-expense') return openCustomerExpenseForm();
         if (action === 'customer-record-filter') return renderCustomerRecords(actionButton.dataset.filter, false);
         if (action === 'print-customer-records') return printCustomerRecords();
         if (action === 'customer-record-print') {
