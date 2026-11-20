@@ -60,16 +60,16 @@ Customer data is scoped to the signed-in account. A customer's products, plans, 
 
 ### Overview
 
-**User Overview** shows the combined allocated budget of active plans and a single line chart of monthly paid expenses. Its summary separates Paid, Unpaid, and Total Expenses: unpaid balances are excluded from expenses, and partial payments count only for the amount actually paid. The payment reminder lists purchases with a remaining balance.
+**User Overview** lets the user set a separate allocated budget for each month and shows that month's paid expenses and remaining balance. Only payments made and expenses dated in that month reduce the balance. Unpaid purchases do not count as expenses. Selecting another month loads its budget without carrying over the previous month's balance.
 
 ### My plan purchase
 
 This is the customer's personal purchase-plan planner; it is not the staff workspace catalog.
 
 1. Open **My plan purchase**.
-2. Select **Add Plan** to create a named plan with a date, allocated budget, and one or more items with quantities and estimated prices.
+2. Select **Add Plan**, choose **Products**, **Services / Bills**, or **Groceries**, and enter a date, allocated budget, and plan items. Product and grocery items have quantities; service and bill items use a single estimated amount without a quantity.
 3. Review the saved plans, including estimated items, allocated budgets, remaining amounts, and budget status.
-4. Edit or delete a plan using its row actions. Plans can be marked active/inactive. Inactive plans cannot be selected for new purchases.
+4. Review the separate Products, Services / Bills, and Groceries sections. Edit or delete a plan using its row actions. Plans can be marked active/inactive. Inactive plans cannot be selected for new purchases.
 
 When a plan is selected in a purchase, its item prices can be recorded as actual amounts and compared with the plan's estimate and budget.
 
@@ -82,7 +82,7 @@ The **Help Center** explains the User Overview's budget and expense summaries, h
 1. Open **Purchase Transactions** and choose **Create transaction**.
 2. The signed-in user's account name is selected automatically as the purchaser.
 3. Set the purchase date.
-4. Choose one or more active products, services, or plans; enter a quantity for each. Use **Add another item** for more lines.
+4. Choose one or more active products, services, or plans; enter a quantity where applicable. Service and bill plans do not use a quantity. Use **Add another item** for more lines.
 5. For a plan, review or change the actual prices for included items.
 6. Review the calculated total, add optional remarks, and choose **Create transaction**.
 
@@ -103,7 +103,7 @@ The payment list has **From** and **To** date filters and displays the related t
 
 ### My expenses
 
-Purchase transactions and payments appear here automatically. Each purchase is shown only once: unpaid or partially paid purchases appear as **Purchase**, and fully paid purchases appear as **Payment** with the total amount paid. Partial payments are included in the Purchase row's paid amount and do not create duplicate rows. There is no need to re-enter a purchase or payment. Use **From** and **To** to filter by date range. Previously recorded separate expenses, if any, remain visible here.
+Purchase transactions and payments appear here automatically. Each purchase is summarized only once: unpaid or partially paid purchases appear as **Purchase**, and fully paid purchases appear as **Payment** with the total amount paid. Partial payments are included in the Purchase row's paid amount and do not create duplicate rows. There is no need to re-enter a purchase or payment. Use **From** and **To** to filter by date range. Previously recorded separate expenses, if any, remain visible here.
 
 ### Payment summary
 
@@ -111,7 +111,7 @@ Purchase transactions and payments appear here automatically. Each purchase is s
 
 ### All records
 
-**All records** combines the account's purchases, payments, and expenses into a date-filtered view, with one row per purchase transaction. Unpaid or partially paid purchases appear as **Purchase**; fully paid purchases appear as **Payment** and replace the Purchase entry. Purchase and payment transaction charts summarize their totals in the selected range. Summary cards show total purchases, total payments, and outstanding balance. Tabs let the user show all records, only purchases, only payments, or outstanding balances. Search and the **From** and **To** date range help locate records; available row actions depend on record ownership and type.
+**All records** combines the account's purchases, payments, and expenses into a date-filtered view. Its pie chart compares the selected monthly budget with paid expenses for that month. Every purchase remains listed with its full amount and **Paid**, **Partial**, or **Unpaid** status; recorded payments and manual expenses appear as separate rows. Summary cards distinguish total purchases, total paid expenses, and unpaid purchase balances. Tabs let the user show all records, purchases, payments, expenses, or outstanding balances. Search and the **From** and **To** date range help locate records; available row actions depend on record ownership and type.
 
 ### Personal information
 
@@ -173,7 +173,7 @@ Passwords are handled by Firebase Authentication and are never displayed by FinT
 - A new purchase starts with zero paid and its full total outstanding (unless its total is zero).
 - Payments belong to a purchase. Each saved payment reduces that purchase's outstanding balance.
 - A purchase is **unpaid** before any amount is paid, **partial** while a balance remains after payment, and **paid** when the balance reaches zero.
-- In **My expenses** and **All records**, each purchase is shown only once. Unpaid and partially paid purchases appear as **Purchase**; linked payment amounts are included in that row. Once fully paid, the purchase appears as one **Payment** row for the total paid, replacing the Purchase row.
+- In **My expenses**, each purchase is summarized only once. **All records** shows every purchase with its **Paid**, **Partial**, or **Unpaid** status and lists its payments separately.
 - Paid and Total Expenses exclude unpaid balances. Partial transactions contribute only the amount actually paid; the remaining balance is counted as Unpaid. Separately recorded expenses are included in the paid total.
 - Deleting a payment restores its amount to the purchase balance. Delete payments before deleting their linked purchase.
 - Customer-created catalog items and contacts belong to that customer account. They are distinct from workspace products and customers.

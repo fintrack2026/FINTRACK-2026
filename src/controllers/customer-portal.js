@@ -1,9 +1,9 @@
 import { firestore, timestamp } from '../services/firestore.js';
-import { purchaseReceiptPdf, purchaseWithProcessorName, removePurchaseRecord } from './purchases.js';
+import { purchaseReceiptPdf, removePurchaseRecord } from './purchases.js';
 import { customerOwnsPurchase, paymentTotalsAfterChange, paymentWithProcessorName } from './payments.js';
 import { ensureCustomerAccountProfile } from '../services/customer-account.js';
 import { normalizeDateRange } from '../services/reporting.js';
-import { customerPlanSchema, customerPlanStateSchema, customerProductStatusSchema, customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, idSchema, parse, paymentSchema, productSchema, purchaseSchema } from '../services/validation.js';
+import { customerMonthlyBudgetMonthSchema, customerMonthlyBudgetSchema, customerPlanSchema, customerPlanStateSchema, customerProductStatusSchema, customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, idSchema, parse, paymentSchema, productSchema, purchaseSchema } from '../services/validation.js';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const rows = (snapshot) => snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
@@ -179,6 +179,39 @@ export async function listCustomerPlans(req, res, next) {
     try {
         const snapshot = await firestore.collection('customerPlans').where('userId', '==', req.user.uid).get();
         res.json(rows(snapshot));
+    } catch (error) { next(error); }
+}
+
+export async function getCustomerMonthlyBudget(req, res, next) {
+    try {
+        const { month } = parse(customerMonthlyBudgetMonthSchema, { month: req.query.month });
+        const reference = firestore.collection('customerMonthlyBudgets').doc(`${req.user.uid}_${month}`);
+        const snapshot = await reference.get();
+        if (!snapshot.exists) return res.json({ month, amount: 0, configured: false });
+        if (snapshot.data().userId !== req.user.uid) fail('Monthly budget not found.', 404);
+        res.json({ month, amount: Number(snapshot.data().amount || 0), configured: true });
+    } catch (error) { next(error); }
+}
+
+export async function saveCustomerMonthlyBudget(req, res, next) {
+    try {
+        const data = parse(customerMonthlyBudgetSchema, req.body);
+        const customerId = await ownedCustomerId(req);
+        const reference = firestore.collection('customerMonthlyBudgets').doc(`${req.user.uid}_${data.month}`);
+        const budget = await firestore.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(reference);
+            if (snapshot.exists && snapshot.data().userId !== req.user.uid) fail('Monthly budget not found.', 404);
+            const value = {
+                ...data,
+                customerId,
+                userId: req.user.uid,
+                createdAt: snapshot.data()?.createdAt || timestamp(),
+                updatedAt: timestamp()
+            };
+            transaction.set(reference, value);
+            return value;
+        });
+        res.json({ ...budget, configured: true });
     } catch (error) { next(error); }
 }
 
@@ -364,7 +397,7 @@ export async function updateCustomerPurchase(req, res, next) {
                         const legacyMeta = /^FINTRACK_PLAN_V1\|([^|]+)\|([\d.]+)$/.exec(String(plan.description || ''));
                         const descriptionBudget = /(?:budget|limit)\s*[:=\-]\s*(?:₱|PHP\s*)?([\d,]+(?:\.\d+)?)/i.exec(String(plan.description || ''));
                         const planBudget = Number.isFinite(storedBudget) && storedBudget > 0 ? storedBudget : Number.isFinite(alternateBudget) && alternateBudget > 0 ? alternateBudget : Number(legacyMeta?.[2] ?? descriptionBudget?.[1]?.replaceAll(',', '') ?? storedBudget ?? 0);
-                        items.push({ productId: planId, itemType: 'plan', productName: plan.planName, quantity: requested.quantity, price: actualPlanTotal, subtotal: actualPlanTotal * requested.quantity, estimatedTotal, planBudget, includedItems });
+                        items.push({ productId: planId, itemType: 'plan', planType: plan.planType || 'products', productName: plan.planName, quantity: requested.quantity, price: actualPlanTotal, subtotal: actualPlanTotal * requested.quantity, estimatedTotal, planBudget, includedItems });
                         continue;
                     }
                     fail('A selected product or plan is invalid.');
@@ -467,7 +500,7 @@ export async function customerPurchaseReceipt(req, res, next) {
             if (contactSnapshot.exists) contact = contactSnapshot.data();
         }
         if (!customerOwnsPurchaseRecord(req.user.uid, customerId, purchase, contact)) fail('Purchase transaction not found.', 404);
-        purchase = await purchaseWithProcessorName({ id: snapshot.id, ...purchase }, req.profile.fullName || req.user.email || '—');
+        purchase = { id: snapshot.id, ...purchase };
         const pdf = await purchaseReceiptPdf(purchase);
         res.type('application/pdf').set('Content-Disposition', `inline; filename="purchase-${snapshot.id}.pdf"`).send(pdf);
     } catch (error) { next(error); }

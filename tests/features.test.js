@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { customers } from '../public/assets/js/features/customers.js';
 import { filterRecordsByCalendar } from '../public/assets/js/features/calendar-filter.js';
-import { customerExpenseEntries, customerExpenseSummary, filterRecordsByDateRange, monthlyPaidExpenseTotals } from '../public/assets/js/features/customer-expenses.js';
+import { customerAllRecordEntries, customerExpenseEntries, customerExpenseSummary, filterRecordsByDateRange, monthlyBudgetSummary, monthlyPaidExpenseTotals } from '../public/assets/js/features/customer-expenses.js';
 import { expenseCategories, expenses } from '../public/assets/js/features/expenses.js';
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from '../public/assets/js/features/payments.js';
 import { products } from '../public/assets/js/features/products.js';
@@ -14,7 +14,7 @@ import { customerOwnsPurchase, paymentTotalsAfterChange } from '../src/controlle
 import { requireAdmin, requireCustomer, requireWorkspaceMember } from '../src/middleware/auth.js';
 import { summarizeCustomerMonitoring } from '../src/services/customer-account.js';
 import { normalizeDateRange, summarizePayments, transactionDateRange } from '../src/services/reporting.js';
-import { customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, managedUserSchema, productSchema, purchaseSchema } from '../src/services/validation.js';
+import { customerMonthlyBudgetMonthSchema, customerMonthlyBudgetSchema, customerPlanSchema, customerProfileSchema, customerProvisionSchema, customerPurchaseUpdateSchema, customerSchema, expenseSchema, managedUserSchema, productSchema, purchaseSchema } from '../src/services/validation.js';
 
 test('customer and staff workspace routes reject other account roles', () => {
     const invoke = (middleware, role) => {
@@ -114,6 +114,19 @@ test('customer purchase updates accept editable customer, date, remarks, and ite
     }).success, true);
     assert.equal(customerPurchaseUpdateSchema.safeParse({ purchaseDate: '2026-09-29' }).success, true);
     assert.equal(customerPurchaseUpdateSchema.safeParse({ customerId: 'contact-1', purchaseDate: '2026-09-29', items: [] }).success, false);
+});
+
+test('customer plans require quantities for products and groceries but not services', () => {
+    const basePlan = { planName: 'Home plan', planDate: '2026-09-29', budget: 2000, items: [{ itemName: 'Water bill', estimatedPrice: 1200 }] };
+    const servicePlan = customerPlanSchema.safeParse({ ...basePlan, planType: 'services' });
+    assert.equal(servicePlan.success, true);
+    assert.equal(servicePlan.data.items[0].quantity, 1);
+    assert.equal(customerPlanSchema.safeParse({ ...basePlan, planType: 'services', items: [{ ...basePlan.items[0], quantity: 2 }] }).success, false);
+    for (const planType of ['products', 'groceries']) {
+        assert.equal(customerPlanSchema.safeParse({ ...basePlan, planType }).success, false);
+        assert.equal(customerPlanSchema.safeParse({ ...basePlan, planType, items: [{ ...basePlan.items[0], quantity: 2 }] }).success, true);
+    }
+    assert.equal(customerPlanSchema.safeParse({ ...basePlan, items: [{ ...basePlan.items[0], quantity: 1 }] }).data.planType, 'products');
 });
 
 test('payments show due purchases and submit payment details', async () => {
@@ -271,7 +284,7 @@ test('customer expenses include purchases and payments while totals exclude unpa
         { id: 'purchase-3', purchaseDate: '2026-10-01', items: [{ productName: 'Plan' }], totalAmount: 70, amountPaid: 70, balanceAmount: 0, paymentStatus: 'paid' }
     ];
     const payments = [
-        { id: 'payment-1', purchaseId: 'purchase-1', paymentDate: '2026-10-03', amount: 25 },
+        { id: 'payment-1', purchaseId: 'purchase-1', paymentDate: '2026-10-03', amount: 25, paymentMethod: 'cash' },
         { id: 'payment-2', purchaseId: 'purchase-3', paymentDate: '2026-10-05', amount: 20 },
         { id: 'payment-3', purchaseId: 'purchase-3', paymentDate: '2026-10-06', amount: 50 }
     ];
@@ -283,9 +296,11 @@ test('customer expenses include purchases and payments while totals exclude unpa
     assert.deepEqual(entries.filter(({ sourceId }) => sourceId === 'purchase-1').map(({ sourceType, paid, unpaid }) => ({ sourceType, paid, unpaid })), [
         { sourceType: 'purchase', paid: 25, unpaid: 15 }
     ]);
+    assert.equal(entries.find(({ sourceId }) => sourceId === 'purchase-1').detail, 'cash');
     assert.deepEqual(entries.filter(({ sourceId }) => sourceId === 'purchase-3').map(({ sourceType, date, paid, unpaid }) => ({ sourceType, date, paid, unpaid })), [
         { sourceType: 'payment', date: '2026-10-06', paid: 70, unpaid: 0 }
     ]);
+    assert.equal(entries.find(({ sourceId }) => sourceId === 'purchase-3').receiptId, 'purchase-3');
     assert.deepEqual(filterRecordsByDateRange(entries, 'date', '2026-10-02', '2026-10-03').map(({ id }) => id), ['purchase:purchase-1', 'purchase:purchase-2']);
 });
 
@@ -295,6 +310,72 @@ test('monthly paid expenses follow payment and manual expense dates', () => {
         [{ expenseDate: '2026-10-02', amount: 5 }],
         [{ key: '2026-09' }, { key: '2026-10' }]
     ), [12, 13]);
+});
+
+test('all records show each purchase once and change fully paid purchases to payments', () => {
+    const records = customerAllRecordEntries([
+        { id: 'paid', purchaseDate: '2026-10-01', totalAmount: 100, amountPaid: 100, items: [{ productName: 'Groceries', quantity: 1 }] },
+        { id: 'unpaid', purchaseDate: '2026-10-02', totalAmount: 40, amountPaid: 0, items: [{ productName: 'Supplies', quantity: 1 }] },
+        { id: 'partial', purchaseDate: '2026-10-02', totalAmount: 60, amountPaid: 20, items: [{ productName: 'Utilities', quantity: 1 }] }
+    ], [
+        { id: 'payment-1', purchaseId: 'paid', paymentDate: '2026-10-03', amount: 40 },
+        { id: 'payment-2', purchaseId: 'paid', paymentDate: '2026-10-04', amount: 60 },
+        { id: 'payment-3', purchaseId: 'partial', paymentDate: '2026-10-03', amount: 10 },
+        { id: 'payment-4', purchaseId: 'partial', paymentDate: '2026-10-04', amount: 10 },
+        { id: 'payment-5', paymentDate: '2026-10-05', amount: 7 }
+    ], [
+        { id: 'expense-1', expenseDate: '2026-10-04', title: 'Electricity', amount: 15 }
+    ]);
+
+    assert.equal(records.length, 5);
+    assert.deepEqual(records.find(({ sourceId }) => sourceId === 'paid'), {
+        id: 'purchase:paid',
+        sourceId: 'paid',
+        purchaseId: 'paid',
+        sourceType: 'payment',
+        date: '2026-10-04',
+        title: 'Groceries × 1',
+        amount: 100,
+        paid: 100,
+        unpaid: 0,
+        detail: 'Fully paid transaction',
+        status: 'paid'
+    });
+    assert.deepEqual(records.find(({ sourceId }) => sourceId === 'partial'), {
+        id: 'purchase:partial',
+        sourceId: 'partial',
+        purchaseId: 'partial',
+        sourceType: 'purchase',
+        date: '2026-10-04',
+        title: 'Utilities × 1',
+        amount: 60,
+        paid: 20,
+        unpaid: 40,
+        detail: undefined,
+        status: 'partial'
+    });
+    assert.equal(records.find(({ sourceId }) => sourceId === 'unpaid').sourceType, 'purchase');
+    assert.equal(records.find(({ sourceId }) => sourceId === 'payment-5').sourceType, 'payment');
+    assert.equal(records.filter(({ sourceId }) => sourceId === 'paid').length, 1);
+});
+
+test('monthly allocated budgets require a valid month and nonnegative amount', () => {
+    assert.equal(customerMonthlyBudgetSchema.safeParse({ month: '2026-11', amount: '20000' }).success, true);
+    assert.equal(customerMonthlyBudgetSchema.safeParse({ month: '2026-13', amount: 20000 }).success, false);
+    assert.equal(customerMonthlyBudgetSchema.safeParse({ month: '2026-11', amount: -1 }).success, false);
+    assert.equal(customerMonthlyBudgetMonthSchema.safeParse({ month: '2026-02' }).success, true);
+});
+
+test('monthly budget summary keeps negative over-budget balances and does not invent an unset budget', () => {
+    assert.deepEqual(monthlyBudgetSummary(20000, 12500, true), {
+        allocated: 20000, paid: 12500, remaining: 7500, usagePercent: 62.5, overBudget: false
+    });
+    assert.deepEqual(monthlyBudgetSummary(20000, 22000, true), {
+        allocated: 20000, paid: 22000, remaining: -2000, usagePercent: 110, overBudget: true
+    });
+    assert.deepEqual(monthlyBudgetSummary(0, 300, false), {
+        allocated: 0, paid: 300, remaining: null, usagePercent: null, overBudget: false
+    });
 });
 
 test('customer purchase transactions can only use contacts owned by the account', () => {
@@ -340,9 +421,9 @@ test('purchase receipt endpoint generator returns a PDF document', async () => {
     assert.ok(longHeight > shortHeight);
 });
 
-test('payments table exposes the requested transaction and processor columns', () => {
+test('payments table shows the user and omits the processor column', () => {
     assert.deepEqual(payments.columns.map(([, label]) => label), [
-        'Payment ID', 'Transaction ID', 'Customer', 'Amount Paid', 'Payment Method', 'Payment Date', 'Processed By', 'Remarks'
+        'Payment ID', 'Transaction ID', 'User', 'Amount Paid', 'Payment Method', 'Payment Date', 'Remarks'
     ]);
 });
 

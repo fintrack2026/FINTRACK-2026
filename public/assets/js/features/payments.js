@@ -30,7 +30,7 @@ export function summarizePaymentMethods(payments) {
 export const payments = {
     title: 'Payments',
     description: 'Apply customer payments to outstanding purchase balances.',
-    columns: [['id', 'Payment ID'], ['purchaseId', 'Transaction ID'], ['customerName', 'Customer'], ['amount', 'Amount Paid'], ['paymentMethod', 'Payment Method'], ['paymentDate', 'Payment Date'], ['processedBy', 'Processed By'], ['notes', 'Remarks']],
+    columns: [['id', 'Payment ID'], ['purchaseId', 'Transaction ID'], ['customerName', 'User'], ['amount', 'Amount Paid'], ['paymentMethod', 'Payment Method'], ['paymentDate', 'Payment Date'], ['notes', 'Remarks']],
     async fields({ state, fieldMarkup, optionList }) {
         const duePurchases = state.records.purchases.filter((purchase) => Number(purchase.balanceAmount) > 0).map((purchase) => ({
             ...purchase,

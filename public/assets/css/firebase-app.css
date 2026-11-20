@@ -117,6 +117,9 @@ button { cursor: pointer; }
 .customer-purchase-lines { display: grid; gap: 8px; }
 .customer-purchase-line { display: grid; grid-template-columns: minmax(0, 1fr) 76px 92px 34px; gap: 8px; align-items: center; }
 .customer-purchase-line-header { display: grid; grid-template-columns: minmax(0, 1fr) 76px 92px 34px; gap: 8px; margin: 2px 0 7px; color: var(--muted); font-size: 11px; }
+.customer-purchase-items-field.services-only .customer-purchase-line-header { grid-template-columns: minmax(0, 1fr) 92px 34px; }
+.customer-purchase-items-field.services-only .customer-purchase-line-header span:nth-child(2) { display: none; }
+.customer-purchase-line.is-service-plan { grid-template-columns: minmax(0, 1fr) 92px 34px; }
 .customer-purchase-line select, .customer-purchase-line input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid #34475f; border-radius: 6px; color: var(--ink); background: var(--field); }
 .customer-purchase-line select:focus, .customer-purchase-line input:focus { border-color: var(--green); outline: none; box-shadow: 0 0 0 3px rgba(99, 210, 192, .15); }
 .customer-purchase-line [data-line-total] { color: var(--ink); font-size: 12px; text-align: right; white-space: nowrap; }
@@ -129,9 +132,11 @@ button { cursor: pointer; }
 .purchase-plan-title { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--ink); }
 .purchase-plan-title span, .purchase-plan-header { color: var(--muted); font-size: 11px; }
 .purchase-plan-header { padding-bottom: 6px; }
+.purchase-plan-header.is-service-plan-header, .purchase-plan-item.is-service-plan-item { grid-template-columns: minmax(0, 1fr) minmax(85px, .65fr) minmax(100px, .8fr); }
 .purchase-plan-item { padding: 5px 0; border-top: 1px solid rgba(54, 74, 98, .55); color: var(--ink); font-size: 12px; }
 .purchase-plan-item > span:nth-child(2) { text-align: center; }
 .purchase-plan-item > span:nth-child(3) { color: var(--muted); }
+.purchase-plan-item.is-service-plan-item > span:nth-child(2) { color: var(--muted); text-align: left; }
 .purchase-plan-item input { text-align: right; }
 .purchase-plan-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #2b4058; color: var(--muted); font-size: 11px; }
 .purchase-plan-summary span { display: inline-flex; gap: 6px; align-items: center; }
@@ -145,9 +150,11 @@ button { cursor: pointer; }
 .purchase-actual-detail input { width: 112px; min-height: 36px; padding: 6px 9px; border: 1px solid #34475f; border-radius: 6px; color: var(--ink); background: var(--field); text-align: right; }
 .purchase-view-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .customer-plan-items { display: grid; gap: 8px; }
-.customer-plan-basics { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; }
+.customer-plan-basics { display: grid; grid-template-columns: 1.2fr repeat(3, minmax(0, 1fr)); gap: 12px; }
 .customer-plan-item, .customer-plan-item-header { display: grid; grid-template-columns: minmax(0, 1fr) 68px 126px 126px 34px; gap: 8px; align-items: center; }
 .customer-plan-item-header { margin: 2px 0 7px; color: var(--muted); font-size: 11px; }
+.customer-plan-item-header.is-service-plan-header { grid-template-columns: minmax(0, 1fr) 126px 126px 34px; }
+.customer-plan-item.is-service-plan-item { grid-template-columns: minmax(0, 1fr) 126px 126px 34px; }
 .customer-plan-item input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid #34475f; border-radius: 6px; color: var(--ink); background: var(--field); }
 .customer-plan-item input:focus { border-color: var(--green); outline: none; box-shadow: 0 0 0 3px rgba(99, 210, 192, .15); }
 .customer-plan-item [data-item-subtotal] { color: var(--ink); font-size: 12px; text-align: right; white-space: nowrap; }
@@ -173,6 +180,9 @@ button { cursor: pointer; }
 .plan-items-preview-row > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .plan-items-preview-row > span:not(:first-child) { text-align: right; }
 .plan-items-preview-row strong { color: var(--ink); font-size: 11px; text-align: right; }
+.plan-items-preview.service-plan-preview { min-width: 260px; }
+.plan-items-preview.service-plan-preview .plan-items-preview-head,
+.plan-items-preview.service-plan-preview .plan-items-preview-row { grid-template-columns: minmax(100px, 1fr) minmax(92px, .8fr); }
 .plan-budget-status { display: inline-flex; width: fit-content; padding: 5px 8px; border-radius: 20px; color: #90e0d0 !important; background: rgba(44, 151, 135, .18); font: 700 10px Inter, sans-serif !important; letter-spacing: .03em; }
 .plan-budget-status.is-over { color: #ffad9b !important; background: rgba(163, 67, 62, .22); }
 .plan-budget-status.is-even { color: #f0cb82 !important; background: rgba(163, 118, 44, .2); }
@@ -346,15 +356,24 @@ button { cursor: pointer; }
 .allocated-budget-label { color: var(--muted); font-size: 11px; font-weight: 700; }
 .allocated-budget-panel strong { color: var(--ink); font: 800 24px Manrope, sans-serif; }
 .allocated-budget-panel small { color: var(--muted); font-size: 11px; }
+.monthly-budget-panel { margin-bottom: 16px; padding: 18px 20px; }
+.monthly-budget-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.monthly-budget-heading > div { display: grid; justify-items: start; gap: 6px; }
+.monthly-budget-heading > div > strong { color: var(--ink); font: 800 28px Manrope, sans-serif; }
+.monthly-budget-form { display: flex; align-items: flex-end; gap: 10px; }
+.monthly-budget-form label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
+.monthly-budget-form input { width: 155px; min-height: 38px; padding: 8px 10px; border: 1px solid #34475f; border-radius: 6px; color: var(--ink); background: var(--field); }
+.monthly-budget-form input[type="month"] { width: 150px; color-scheme: dark; }
+.monthly-budget-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.monthly-budget-summary > div { display: grid; gap: 4px; }
+.monthly-budget-summary span, .monthly-budget-summary small { color: var(--muted); font-size: 11px; }
+.monthly-budget-summary strong { color: var(--ink); font: 700 18px Manrope, sans-serif; }
+.monthly-budget-summary strong.is-over { color: #ff8585; }
 .help-center-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .help-center-grid .panel-body { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .help-center-grid ol { margin: 8px 0; padding-left: 20px; }
 .help-center-grid li + li { margin-top: 6px; }
 .help-center-grid strong { color: var(--ink); }
-.metrics.expense-summary-below-chart { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
-.expense-summary-below-chart .metric { display: grid; min-width: 0; min-height: 126px; grid-template-rows: 30px auto minmax(2.4em, auto); align-content: stretch; }
-.expense-summary-below-chart .metric-value { margin-top: 8px; overflow-wrap: anywhere; }
-.expense-summary-below-chart .metric-note { line-height: 1.3; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 22px; }
 .metric { min-height: 126px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: linear-gradient(145deg, rgba(27, 45, 67, .96), rgba(17, 30, 47, .98)); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
 .metric-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; font-weight: 600; }
@@ -439,6 +458,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .record-overview > div > strong { grid-column: 1; grid-row: 2; overflow: hidden; color: var(--ink); font: 700 17px Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .record-browser { overflow: hidden; }
 .customer-record-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.customer-record-charts.customer-record-budget-chart { grid-template-columns: minmax(0, 1fr); }
+.customer-record-budget-chart .customer-record-chart-canvas { height: 270px; }
 .metrics.record-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .customer-record-charts .panel-header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .customer-record-chart-canvas { position: relative; height: 230px; padding: 12px 16px 16px; }
@@ -461,6 +482,7 @@ tbody tr:last-child td { border-bottom: 0; }
     body.print-customer-records .print-record-heading h2 { margin: 0 0 4px; color: #17212f; font: 700 17px Manrope, sans-serif; }
     body.print-customer-records .print-record-heading p { margin: 0; color: #526274; font-size: 10px; }
     body.print-customer-records .customer-record-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+    body.print-customer-records .customer-record-charts.customer-record-budget-chart { grid-template-columns: minmax(0, 1fr); }
     body.print-customer-records .customer-record-chart-canvas { height: 170px; padding: 6px; }
     body.print-customer-records .customer-record-chart-canvas canvas.print-captured { display: none !important; }
     body.print-customer-records .print-chart-image { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -514,6 +536,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .record-type-expense { color: #f0cb82; background: rgba(163, 118, 44, .2); }
 .record-type-balance { color: #ffad9b; background: rgba(163, 67, 62, .22); }
 .record-detail { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+.record-detail.customer-payment-methods { display: flex; flex-wrap: wrap; gap: 5px; }
+.customer-payment-method-badge { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid rgba(99, 210, 192, .22); border-radius: 999px; color: #90e0d0; background: rgba(44, 151, 135, .18); font-size: 10px; font-weight: 700; line-height: 1.2; }
+.customer-payment-method-gcash, .customer-payment-method-bank-transfer { border-color: rgba(48, 139, 246, .24); color: #9ec6ff; background: rgba(48, 139, 246, .14); }
+.customer-payment-method-others { border-color: rgba(237, 191, 105, .24); color: var(--yellow); background: rgba(237, 191, 105, .13); }
 .report-line { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid rgba(143, 164, 188, .13); }
 .report-line:last-child { border: 0; }
 .report-line span { color: var(--muted); }
@@ -646,6 +672,7 @@ button.payment-method-card { cursor: pointer; }
     .customer-mobile-cards tbody td:last-child .row-actions { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
     .customer-mobile-cards .record-row-select { position: absolute; top: 9px; right: 0; margin: 0; }
     .customer-mobile-cards tbody td:first-child .record-row-select + span { grid-column: 2; padding-right: 22px; }
+    .customer-expenses-table tbody td[data-label="Details"] .customer-payment-methods { grid-column: 2; justify-self: end; justify-content: flex-end; max-width: 100%; text-align: right; }
     .customer-products-table tbody td:first-child > strong,
     .customer-products-table tbody td:first-child > .record-detail { grid-column: 2; }
     .customer-products-table .record-detail { text-align: right; overflow-wrap: anywhere; }
@@ -654,10 +681,17 @@ button.payment-method-card { cursor: pointer; }
     .customer-plans-table .plan-items-preview-head,
     .customer-plans-table .plan-items-preview-row { grid-template-columns: minmax(0, 1fr) 26px minmax(0, .75fr) minmax(0, .75fr); gap: 4px; }
     .customer-plans-table .plan-items-preview-row { overflow-wrap: anywhere; }
+    .customer-plans-table .plan-items-preview.service-plan-preview .plan-items-preview-head,
+    .customer-plans-table .plan-items-preview.service-plan-preview .plan-items-preview-row { grid-template-columns: minmax(0, 1fr) minmax(0, .75fr); }
     .customer-plans-table .plan-items-preview-row > span:not(:first-child),
     .customer-plans-table .plan-items-preview-row strong { font-size: 9px; }
     .customer-contact-overview { min-height: 110px; padding: 16px; }
     .customer-contact-overview-note { display: none; }
+    .monthly-budget-heading { align-items: stretch; flex-direction: column; }
+    .monthly-budget-form { flex-wrap: wrap; }
+    .monthly-budget-form label { flex: 1 1 140px; }
+    .monthly-budget-form label input { width: 100%; }
+    .monthly-budget-form .button { flex: 1 1 100%; }
     .transaction-filters { width: 100%; display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
     .transaction-filters select, .transaction-date-filter input { width: 100%; min-width: 0; }
     .toolbar { width: 100%; }
@@ -673,12 +707,7 @@ button.payment-method-card { cursor: pointer; }
     .dashboard-charts { grid-template-columns: minmax(0, 1fr); }
     .chart-canvas, .chart-canvas-doughnut { height: 250px; }
     .help-center-grid { grid-template-columns: minmax(0, 1fr); }
-    .metrics.expense-summary-below-chart { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-    .expense-summary-below-chart .metric { min-height: 104px; padding: 10px 8px; grid-template-rows: 26px auto minmax(2.6em, auto); }
-    .expense-summary-below-chart .metric-top { font-size: 9px; }
-    .expense-summary-below-chart .metric-icon { width: 24px; height: 24px; font-size: 13px; }
-    .expense-summary-below-chart .metric-value { font-size: 15px; }
-    .expense-summary-below-chart .metric-note { font-size: 9px; }
+
     .due-reminder-note { padding: 15px; }
     .due-reminder-head { align-items: flex-start; flex-direction: column; }
     .record-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -712,12 +741,19 @@ button.payment-method-card { cursor: pointer; }
     .customer-purchase-line { grid-template-columns: minmax(0, 1fr) 68px 34px; }
     .customer-purchase-line select { grid-column: 1 / -1; }
     .customer-purchase-line [data-line-total] { text-align: left; }
+    .customer-purchase-line.is-service-plan { grid-template-columns: minmax(0, 1fr) 68px 34px; }
+    .customer-purchase-line.is-service-plan [data-line-total] { grid-column: 1 / 3; }
+    .customer-purchase-line.is-service-plan .small-button { grid-column: 3; }
+    .customer-purchase-items-field.services-only .customer-purchase-line-header { grid-template-columns: minmax(0, 1fr) 68px 34px; }
+    .customer-purchase-items-field.services-only .customer-purchase-line-header span:nth-child(2) { display: none; }
     .customer-plan-basics, .customer-plan-summary { grid-template-columns: 1fr; }
     .customer-plan-item, .customer-plan-item-header { grid-template-columns: minmax(0, 1fr) 68px 34px; }
     .customer-plan-item-header { display: none; }
+    .customer-plan-item.is-service-plan-item { grid-template-columns: minmax(0, 1fr) 68px 34px; }
     .customer-plan-item [name="itemName"] { grid-column: 1 / -1; grid-row: 1; }
     .customer-plan-item [name="itemQuantity"] { grid-column: 1; grid-row: 2; }
     .customer-plan-item [name="itemPrice"] { grid-column: 2; grid-row: 2; }
+    .customer-plan-item.is-service-plan-item [name="itemPrice"] { grid-column: 1 / 3; }
     .customer-plan-item [data-item-subtotal] { grid-column: 1 / 3; grid-row: 3; text-align: left; }
     .customer-plan-item .small-button { grid-column: 3; grid-row: 3; }
 }

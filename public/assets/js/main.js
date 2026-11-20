@@ -1,7 +1,7 @@
 import { createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { auth, db } from './firebase.js';
 import { customers } from './features/customers.js';
-import { customerExpenseEntries, customerExpenseSummary, filterRecordsByDateRange, monthlyPaidExpenseTotals, purchaseUnpaidAmount } from './features/customer-expenses.js';
+import { customerAllRecordEntries, customerExpenseEntries, filterRecordsByDateRange, monthlyBudgetSummary, monthlyPaidExpenseTotals, purchaseUnpaidAmount } from './features/customer-expenses.js';
 import { expenseCategories, expenses } from './features/expenses.js';
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from './features/payments.js';
 import { products } from './features/products.js';
@@ -30,7 +30,7 @@ const actionIconObserver = new MutationObserver(() => {
 actionIconObserver.observe(viewContainer, { childList: true, subtree: true });
 
 const initialCustomerDateRange = defaultMonthRange();
-const state = { user: null, profile: null, view: 'dashboard', records: {}, customerPlanData: [], customerRecordData: null, customerPurchaseRows: null, customerContacts: [], customerAccounts: [], registeredUsers: null, registeredUserSearch: '', registeredUserStatus: 'all', registeredUserFrom: '', registeredUserTo: '', workspaceDateFrom: '', workspaceDateTo: '', customerDateFrom: initialCustomerDateRange.from, customerDateTo: initialCustomerDateRange.to, customerRecordFilter: 'all', customerRecordSearch: '', recordSelection: { collection: '', ids: new Set(), active: false } };
+const state = { user: null, profile: null, view: 'dashboard', records: {}, customerPlanData: [], customerPlanFilter: 'all', customerRecordData: null, customerBudget: null, customerPurchaseRows: null, customerContacts: [], customerAccounts: [], registeredUsers: null, registeredUserSearch: '', registeredUserStatus: 'all', registeredUserFrom: '', registeredUserTo: '', workspaceDateFrom: '', workspaceDateTo: '', customerDateFrom: initialCustomerDateRange.from, customerDateTo: initialCustomerDateRange.to, customerBudgetMonth: monthKey(new Date()), customerRecordFilter: 'all', customerRecordSearch: '', recordSelection: { collection: '', ids: new Set(), active: false } };
 let portalMode = 'customer';
 let pendingAuthError = '';
 let profileProvisioning = null;
@@ -327,11 +327,24 @@ function drawWorkspaceCharts(purchases, payments, expenses) {
     drawDoughnutChart('workspace-payment-chart', Object.keys(methods), Object.values(methods));
 }
 
-function drawCustomerCharts(payments, expenses) {
-    const range = sixMonthRange();
-    drawLineChart('customer-activity-chart', range, [
-        { label: 'Monthly expenses', data: monthlyPaidExpenseTotals(payments, expenses, range), borderColor: '#ef8b78' }
-    ]);
+function drawCustomerBudgetChart(allocated, paid, canvasId, chartCollection) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !window.Chart) return;
+    chartCollection.push(new window.Chart(canvas, {
+        type: 'pie',
+        data: {
+            labels: ['Paid Expenses', 'Remaining Budget'],
+            datasets: [{ data: [paid, Math.max(0, allocated - paid)], backgroundColor: ['#ef8b78', '#63d2c0'], borderColor: '#142238', borderWidth: 3, hoverOffset: 5 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#91a3b9', usePointStyle: true, boxWidth: 7, padding: 15 } },
+                tooltip: { callbacks: { label: (context) => `${context.label}: ${money(context.parsed)}` } }
+            }
+        }
+    }));
 }
 
 function updateAvatar(element, profile = state.profile) {
@@ -406,17 +419,36 @@ async function showRegisteredUserDetails(id) {
     modalRoot.innerHTML = `<div class="modal-backdrop" data-close-modal><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">User details</h2><button class="modal-close" type="button" data-close-modal aria-label="Close">×</button></div><div class="modal-content"><div class="report-line"><span>Name</span><strong>${escapeHtml(user.fullName || 'Unnamed user')}</strong></div><div class="report-line"><span>Email</span><strong>${escapeHtml(user.email || '—')}</strong></div><div class="report-line"><span>User ID</span><strong>${escapeHtml(user.id)}</strong></div><div class="report-line"><span>Role</span><strong>${escapeHtml(user.role)}</strong></div><div class="report-line"><span>Status</span>${statusPill(user.status)}</div><div class="report-line"><span>Registered</span><strong>${shortDate(user.createdAt)}</strong></div><div class="report-line"><span>Last sign-in</span><strong>${shortDate(user.lastSignInAt)}</strong></div><div class="report-line"><span>Email verified</span><strong>${user.emailVerified ? 'Yes' : 'No'}</strong></div></div></section></div>`;
 }
 
-async function renderCustomerDashboard() {
-    const [purchases, payments, expenses, plans] = await Promise.all([
+async function renderCustomerDashboard(selectedMonth = state.customerBudgetMonth) {
+    dashboardCharts.forEach((chart) => chart.destroy());
+    dashboardCharts = [];
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth) ? selectedMonth : monthKey(new Date());
+    state.customerBudgetMonth = month;
+    const monthStart = `${month}-01`;
+    const nextMonth = new Date(`${monthStart}T00:00:00.000Z`);
+    nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+    const monthEnd = new Date(nextMonth.valueOf() - 86400000).toISOString().slice(0, 10);
+    const [purchases, payments, expenses, budget] = await Promise.all([
         apiFetch('/customer/purchases'),
         apiFetch('/customer/payments'),
         apiFetch('/customer/expenses'),
-        apiFetch('/customer/plans')
+        apiFetch(`/customer/monthly-budget?month=${encodeURIComponent(month)}`)
     ]);
-    const { paid, unpaid, totalExpenses } = customerExpenseSummary(purchases, payments, expenses);
-    const allocatedBudget = plans.filter((plan) => plan.state !== 'inactive')
-        .reduce((sum, plan) => sum + Math.max(0, Number(normalizeCustomerPlan(plan).budget || 0)), 0);
-    const recent = [...purchases].sort((a, b) => String(b.purchaseDate || '').localeCompare(String(a.purchaseDate || ''))).slice(0, 5);
+    state.customerBudget = budget;
+    const monthPurchases = filterRecordsByDateRange(purchases, 'purchaseDate', monthStart, monthEnd);
+    const paidExpenses = monthlyPaidExpenseTotals(payments, expenses, [{ key: month }])[0];
+    const monthPayments = filterRecordsByDateRange(payments, 'paymentDate', monthStart, monthEnd);
+    const monthManualExpenses = filterRecordsByDateRange(expenses, 'expenseDate', monthStart, monthEnd);
+    const purchaseTotal = monthPurchases.reduce((total, purchase) => total + purchaseActualTotal(purchase), 0);
+    const unpaidTotal = monthPurchases.reduce((total, purchase) => total + purchaseUnpaidAmount(purchase), 0);
+    const budgetSummary = monthlyBudgetSummary(budget.amount, paidExpenses, budget.configured);
+    const { allocated: allocatedBudget, remaining: remainingBudget, overBudget } = budgetSummary;
+    const usage = budgetSummary.usagePercent === null ? '—' : `${budgetSummary.usagePercent.toFixed(1)}% Used`;
+    const budgetStatus = !budget.configured
+        ? 'Set a budget to start tracking'
+        : overBudget ? 'Over Budget' : 'Within Budget';
+    const monthLabel = new Intl.DateTimeFormat('en-PH', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${monthStart}T00:00:00.000Z`));
+    const recent = [...monthPurchases].sort((a, b) => String(b.purchaseDate || '').localeCompare(String(a.purchaseDate || ''))).slice(0, 5);
     const duePurchases = purchases.map((purchase) => ({ purchase, balance: purchaseUnpaidAmount(purchase) }))
         .filter(({ balance }) => balance > 0)
         .sort((left, right) => String(left.purchase.purchaseDate || '').localeCompare(String(right.purchase.purchaseDate || '')));
@@ -426,16 +458,19 @@ async function renderCustomerDashboard() {
     }).join('');
     viewContainer.innerHTML = `
         <div class="view-heading"><div><h2>Your finances</h2><p>Purchases, payments, and expenses at a glance.</p></div></div>
-        <section class="panel allocated-budget-panel"><div><span class="allocated-budget-label">Allocated Budget</span><strong>${money(allocatedBudget)}</strong><small>${plans.filter((plan) => plan.state !== 'inactive').length} active ${plans.filter((plan) => plan.state !== 'inactive').length === 1 ? 'plan' : 'plans'}</small></div><button class="text-button" type="button" data-view="catalog">View plans</button></section>
-        <div class="dashboard-charts customer-dashboard-charts">
-            <section class="panel chart-panel"><div class="panel-header"><h3>Monthly expenses</h3><span class="record-count">Paid expenses · last six months</span></div><div class="chart-canvas"><canvas id="customer-activity-chart" role="img" aria-label="Line chart showing monthly paid expenses for the last six months"></canvas></div></section>
-        </div>
-        <div class="metrics customer-metrics expense-summary-below-chart">${metric('Paid', money(paid), 'Payments received, including partial payments', '✓')}${metric('Unpaid', money(unpaid), 'Remaining purchase balances', '₱')}${metric('Total Expenses', money(totalExpenses), 'Actual paid amount only', '↘')}</div>
+        <section class="panel monthly-budget-panel">
+            <div class="monthly-budget-heading"><div><span class="allocated-budget-label">${escapeHtml(monthLabel)} Allocated Budget</span><strong>${money(allocatedBudget)}</strong><span class="plan-budget-status${overBudget ? ' is-over' : ''}">${escapeHtml(budgetStatus)}</span></div>
+                <form class="monthly-budget-form" data-record-form="customer-budget"><label>Month<input id="customer-budget-month" type="month" name="month" value="${escapeHtml(month)}" required></label><label>Allocated budget<input type="number" name="amount" min="0" step="0.01" value="${budget.configured ? escapeHtml(allocatedBudget) : ''}" placeholder="0.00" required></label><button class="button" type="submit">Save budget</button></form>
+            </div>
+            <div class="monthly-budget-summary"><div><span>Budget Used</span><strong>${money(paidExpenses)}</strong><small>${usage}</small></div><div><span>Remaining Budget</span><strong class="${overBudget ? 'is-over' : ''}">${budget.configured ? money(remainingBudget) : '—'}</strong><small>${overBudget ? `Over Budget by ${money(Math.abs(remainingBudget))}` : budget.configured ? 'Available this month' : 'Set a monthly budget'}</small></div></div>
+        </section>
+        <div class="customer-record-charts customer-record-budget-chart"><section class="panel chart-panel"><div class="panel-header"><div><h3>Allocated Budget and Expenses</h3><p>Paid expenses against ${escapeHtml(monthLabel)} budget</p></div><span class="record-count">${money(allocatedBudget)} allocated</span></div><div class="customer-record-chart-canvas"><canvas id="customer-overview-budget-chart" role="img" aria-label="Pie chart showing paid expenses and remaining monthly budget"></canvas></div></section></div>
+        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${monthPurchases.length} ${monthPurchases.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total paid expenses', money(paidExpenses), `${monthPayments.length + monthManualExpenses.length} paid records`, '✓')}${metric('Unpaid purchases', money(unpaidTotal), 'Remaining across purchases', '₱')}</div>
         <section class="due-reminder-note" aria-labelledby="due-reminder-title"><div class="due-reminder-head"><div><span class="due-reminder-kicker">PAYMENT REMINDER</span><h3 id="due-reminder-title">All dues to pay</h3></div>${duePurchases.length ? '<button class="button due-reminder-action" data-action="new-customer-payment">Record payment</button>' : ''}</div>${duePurchases.length ? `<ul class="due-reminder-list">${dueItems}</ul>` : '<p class="due-reminder-clear">You’re all caught up. No outstanding balances.</p>'}</section>
         <section class="panel"><div class="panel-header"><h3>Recent purchases</h3><button class="text-button" data-view="customer-records">View all records</button></div>
             ${recent.length ? customerPurchaseTable(recent) : emptyState('No purchases yet', 'Add a purchase to start your financial records.')}
         </section>`;
-    drawCustomerCharts(payments, expenses);
+    drawCustomerBudgetChart(Number(allocatedBudget || 0), paidExpenses, 'customer-overview-budget-chart', dashboardCharts);
 }
 
 function planMoneyValue(value) {
@@ -463,7 +498,8 @@ function normalizeCustomerPlan(plan) {
         : alternateBudget !== undefined && alternateBudget > 0
             ? alternateBudget
             : legacyBudget ?? storedBudget;
-    return { ...plan, items, planDate: plan.planDate || legacyMeta?.[1], budget, estimatedTotal, remaining: plan.remaining ?? (budget === undefined ? undefined : Number(budget) - estimatedTotal) };
+    const planType = ['products', 'services', 'groceries'].includes(plan.planType) ? plan.planType : 'products';
+    return { ...plan, planType, items, planDate: plan.planDate || legacyMeta?.[1], budget, estimatedTotal, remaining: plan.remaining ?? (budget === undefined ? undefined : Number(budget) - estimatedTotal) };
 }
 
 function purchaseActualTotal(purchase) {
@@ -475,25 +511,46 @@ function purchaseActualTotal(purchase) {
     }, 0);
 }
 
-async function renderCustomerCatalog() {
+async function renderCustomerCatalog(filter = state.customerPlanFilter) {
+    state.customerPlanFilter = ['all', 'products', 'services', 'groceries'].includes(filter) ? filter : 'all';
     const rawCustomerPlans = await apiFetch('/customer/plans');
     const customerPlans = rawCustomerPlans.map(normalizeCustomerPlan);
     state.customerPlanData = customerPlans;
-    const planRows = customerPlans.length ? `<div class="table-wrap"><table class="customer-plans-table customer-mobile-cards"><thead><tr><th>PLAN</th><th>DATE</th><th>ITEMS</th><th>BUDGET</th><th>ESTIMATED TOTAL</th><th>REMAINING</th><th>STATE</th><th>BUDGET STATUS</th><th>ACTIONS</th></tr></thead><tbody>${customerPlans.map((plan) => {
-        const items = plan.items || [];
-        const legacyMeta = /^FINTRACK_PLAN_V1\|([^|]+)\|([\d.]+)$/.exec(plan.description || '');
-        const budget = plan.budget ?? (legacyMeta ? Number(legacyMeta[2]) : undefined);
-        const estimatedTotal = Number(plan.estimatedTotal ?? plan.totalPrice ?? items.reduce((sum, item) => sum + Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0)), 0));
-        const hasBudget = budget !== undefined && budget !== null;
-        const planDate = plan.planDate || legacyMeta?.[1];
-        const remaining = hasBudget ? Number(plan.remaining ?? (Number(budget) - estimatedTotal)) : 0;
-        const status = plan.budgetStatus || (!hasBudget ? plan.status || '—' : remaining > 0.009 ? 'UNDER BUDGET' : remaining < -0.009 ? 'OVER BUDGET' : 'ON BUDGET');
-        const state = plan.state === 'inactive' ? 'inactive' : 'active';
-        const itemRows = `<div class="plan-items-preview"><div class="plan-items-preview-head"><span>Item</span><span>Qty</span><span>Estimated</span><span>Subtotal</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><span>${Number(item.quantity)}</span><span>${money(item.estimatedPrice ?? item.price)}</span><strong>${money(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0))}</strong></div>`).join('')}</div>`;
-        return `<tr><td data-label="Plan"><strong>${escapeHtml(plan.planName)}</strong></td><td data-label="Date">${shortDate(planDate)}</td><td data-label="Items">${itemRows}</td><td data-label="Budget">${hasBudget ? money(budget) : '—'}</td><td data-label="Estimated total">${money(estimatedTotal)}</td><td data-label="Remaining">${hasBudget ? money(remaining) : '—'}</td><td data-label="State"><button class="plan-state-toggle ${state === 'active' ? 'is-active' : 'is-inactive'}" type="button" data-action="customer-plan-toggle" data-id="${escapeHtml(plan.id)}" data-state="${state === 'active' ? 'inactive' : 'active'}" aria-label="Set ${escapeHtml(plan.planName)} ${state === 'active' ? 'inactive' : 'active'}" title="Click to set ${state === 'active' ? 'inactive' : 'active'}">${state === 'active' ? 'Active' : 'Inactive'}</button></td><td data-label="Budget status">${hasBudget ? `<span class="plan-budget-status ${status === 'OVER BUDGET' ? 'is-over' : status === 'ON BUDGET' ? 'is-even' : ''}">${escapeHtml(status)}</span>` : '—'}</td><td data-label="Actions"><div class="row-actions"><button class="small-button catalog-icon-button" type="button" data-action="customer-plan-edit" data-id="${escapeHtml(plan.id)}" aria-label="Edit ${escapeHtml(plan.planName)}" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z"/></svg></button><button class="small-button delete catalog-icon-button" type="button" data-action="customer-plan-delete" data-id="${escapeHtml(plan.id)}" aria-label="Delete ${escapeHtml(plan.planName)}" title="Delete plan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button></div></td></tr>`;
-    }).join('')}</tbody></table></div>` : emptyState('No plans added yet', 'Create a plan to track your estimated spending against a budget.');
+    const categories = [
+        { id: 'all', label: 'All', count: customerPlans.length },
+        { id: 'products', label: 'Products', count: customerPlans.filter((plan) => plan.planType === 'products').length },
+        { id: 'services', label: 'Services', count: customerPlans.filter((plan) => plan.planType === 'services').length },
+        { id: 'groceries', label: 'Groceries', count: customerPlans.filter((plan) => plan.planType === 'groceries').length }
+    ];
+    const categoryTabs = `<div class="record-filters catalog-filters customer-plan-category-tabs" role="group" aria-label="Filter plans by category">${categories.map((category) => `<button class="record-filter${state.customerPlanFilter === category.id ? ' is-active' : ''}" type="button" data-action="customer-plan-category" data-category="${category.id}" aria-pressed="${state.customerPlanFilter === category.id}">${category.label}<span>${category.count}</span></button>`).join('')}</div>`;
+    const planSections = [
+        { type: 'products', title: 'Products' },
+        { type: 'services', title: 'Services / Bills' },
+        { type: 'groceries', title: 'Groceries' }
+    ].filter(({ type }) => state.customerPlanFilter === 'all' || type === state.customerPlanFilter).map(({ type, title }) => {
+        const plans = customerPlans.filter((plan) => plan.planType === type);
+        const rows = plans.map((plan) => {
+            const items = plan.items || [];
+            const legacyMeta = /^FINTRACK_PLAN_V1\|([^|]+)\|([\d.]+)$/.exec(plan.description || '');
+            const budget = plan.budget ?? (legacyMeta ? Number(legacyMeta[2]) : undefined);
+            const estimatedTotal = Number(plan.estimatedTotal ?? plan.totalPrice ?? items.reduce((sum, item) => sum + Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0)), 0));
+            const hasBudget = budget !== undefined && budget !== null;
+            const planDate = plan.planDate || legacyMeta?.[1];
+            const remaining = hasBudget ? Number(plan.remaining ?? (Number(budget) - estimatedTotal)) : 0;
+            const status = plan.budgetStatus || (!hasBudget ? plan.status || '—' : remaining > 0.009 ? 'UNDER BUDGET' : remaining < -0.009 ? 'OVER BUDGET' : 'ON BUDGET');
+            const state = plan.state === 'inactive' ? 'inactive' : 'active';
+            const itemRows = type === 'services'
+                ? `<div class="plan-items-preview service-plan-preview"><div class="plan-items-preview-head"><span>Service / bill</span><span>Estimated amount</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><strong>${money(item.subtotal ?? item.estimatedPrice ?? item.price)}</strong></div>`).join('')}</div>`
+                : `<div class="plan-items-preview"><div class="plan-items-preview-head"><span>Item</span><span>Qty</span><span>Estimated</span><span>Subtotal</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><span>${Number(item.quantity)}</span><span>${money(item.estimatedPrice ?? item.price)}</span><strong>${money(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0))}</strong></div>`).join('')}</div>`;
+            return `<tr><td data-label="Plan"><strong>${escapeHtml(plan.planName)}</strong></td><td data-label="Date">${shortDate(planDate)}</td><td data-label="Items">${itemRows}</td><td data-label="Budget">${hasBudget ? money(budget) : '—'}</td><td data-label="Estimated total">${money(estimatedTotal)}</td><td data-label="Remaining">${hasBudget ? money(remaining) : '—'}</td><td data-label="State"><button class="plan-state-toggle ${state === 'active' ? 'is-active' : 'is-inactive'}" type="button" data-action="customer-plan-toggle" data-id="${escapeHtml(plan.id)}" data-state="${state === 'active' ? 'inactive' : 'active'}" aria-label="Set ${escapeHtml(plan.planName)} ${state === 'active' ? 'inactive' : 'active'}" title="Click to set ${state === 'active' ? 'inactive' : 'active'}">${state === 'active' ? 'Active' : 'Inactive'}</button></td><td data-label="Budget status">${hasBudget ? `<span class="plan-budget-status ${status === 'OVER BUDGET' ? 'is-over' : status === 'ON BUDGET' ? 'is-even' : ''}">${escapeHtml(status)}</span>` : '—'}</td><td data-label="Actions"><div class="row-actions"><button class="small-button catalog-icon-button" type="button" data-action="customer-plan-edit" data-id="${escapeHtml(plan.id)}" aria-label="Edit ${escapeHtml(plan.planName)}" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z"/></svg></button><button class="small-button delete catalog-icon-button" type="button" data-action="customer-plan-delete" data-id="${escapeHtml(plan.id)}" aria-label="Delete ${escapeHtml(plan.planName)}" title="Delete plan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button></div></td></tr>`;
+        }).join('');
+        const content = rows
+            ? `<div class="table-wrap"><table class="customer-plans-table customer-mobile-cards"><thead><tr><th>PLAN</th><th>DATE</th><th>ITEMS</th><th>BUDGET</th><th>ESTIMATED TOTAL</th><th>REMAINING</th><th>STATE</th><th>BUDGET STATUS</th><th>ACTIONS</th></tr></thead><tbody>${rows}</tbody></table></div>`
+            : emptyState(`No ${title.toLowerCase()} plans yet`, `Add a ${title.toLowerCase()} plan to track its estimated spending.`);
+        return `<section class="panel record-section catalog-plans-section"><div class="panel-header"><h3>${title}</h3><span class="record-count">${plans.length} ${plans.length === 1 ? 'plan' : 'plans'}</span></div>${content}</section>`;
+    }).join('');
     viewContainer.innerHTML = `<div class="view-heading"><div><h2>My plan purchase</h2><p>Set an allocated budget and track estimated costs for your plans.</p></div><div class="toolbar"><button class="button" type="button" data-action="new-customer-plan">Add Plan</button></div></div>
-        <section class="panel record-section catalog-plans-section"><div class="panel-header"><h3>Plans</h3><span class="record-count">${customerPlans.length} ${customerPlans.length === 1 ? 'plan' : 'plans'}</span></div>${planRows}</section>`;
+        ${categoryTabs}${planSections}`;
 }
 
 async function renderCustomerPurchases(from, to, filterText = '', refresh = true, restoreFocus = false) {
@@ -539,11 +596,11 @@ function renderCustomerProfile() {
 function renderHelpCenter() {
     viewContainer.innerHTML = `<div class="view-heading"><div><h2>Help Center</h2><p>Step-by-step guides for your overview, plans, purchases, payments, and records.</p></div></div>
         <div class="help-center-grid">
-            <section class="panel"><div class="panel-header"><h3>Understand your overview</h3></div><div class="panel-body"><ol><li>Check <strong>Allocated Budget</strong> for the budget in your active plans and use the monthly chart to follow paid expenses.</li><li><strong>Paid</strong> reflects amounts actually paid; <strong>Unpaid</strong> shows remaining purchase balances.</li><li><strong>Total Expenses</strong> includes paid amounts only, not unpaid balances.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Understand your overview</h3></div><div class="panel-body"><ol><li>Choose a month, enter its <strong>Allocated Budget</strong>, and save. Budgets do not carry over between months.</li><li>The Overview shows expenses paid in that month and the remaining budget. Payments use their payment date; manual expenses use their expense date.</li><li>Unpaid purchases do not reduce the budget. The remaining amount can be negative when paid expenses exceed the allocation.</li></ol></div></section>
             <section class="panel"><div class="panel-header"><h3>Create a plan</h3></div><div class="panel-body"><ol><li>Open <strong>My plan purchase</strong> and select <strong>Add Plan</strong>.</li><li>Enter the plan name, date, allocated budget, and estimated items.</li><li>Save the plan to see its estimated total and remaining budget.</li></ol></div></section>
             <section class="panel"><div class="panel-header"><h3>Record a purchase</h3></div><div class="panel-body"><ol><li>Open <strong>Purchase Transactions</strong> and choose <strong>Create transaction</strong>.</li><li>Your account is selected automatically. Choose a plan or item, then set the date and quantity.</li><li>Review the total and save. The purchase appears automatically in <strong>My expenses</strong> and <strong>All records</strong>.</li></ol></div></section>
             <section class="panel"><div class="panel-header"><h3>Record a payment</h3></div><div class="panel-body"><ol><li>Open <strong>Payments</strong> and select <strong>Record payment</strong>.</li><li>Choose a purchase with an outstanding balance, enter the amount, date, and method.</li><li>Save. The payment appears automatically in <strong>My expenses</strong>; paid and unpaid balances update from the amount actually paid.</li></ol></div></section>
-            <section class="panel"><div class="panel-header"><h3>Review records and expenses</h3></div><div class="panel-body"><ol><li>Each purchase appears once in <strong>My expenses</strong> and <strong>All records</strong>. Unpaid or partially paid purchases stay as <strong>Purchase</strong>; partial payments appear in its Paid amount.</li><li>When fully paid, the transaction appears as one <strong>Payment</strong> record for the total paid, replacing the Purchase entry.</li><li>Use <strong>From</strong> and <strong>To</strong> to filter dates. Purchases and payments appear automatically; do not re-enter them as expenses.</li></ol></div></section>
+            <section class="panel"><div class="panel-header"><h3>Review records and expenses</h3></div><div class="panel-body"><ol><li><strong>My expenses</strong> and <strong>All records</strong> show each purchase once. Unpaid or partially paid purchases stay under Purchases; when fully paid, the same row becomes a Payment.</li><li>In <strong>All records</strong>, the pie chart compares monthly paid expenses with the remaining budget. Manual expenses remain separate rows; summary cards separate total purchases, paid expenses, and unpaid balances.</li><li>Use <strong>From</strong> and <strong>To</strong> to filter the records list. Purchases and payments appear automatically; do not re-enter them as expenses.</li></ol></div></section>
         </div>`;
 }
 
@@ -587,35 +644,46 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
     const selection = setCustomerDateSelection(from, to);
     state.customerRecordFilter = filter;
     if (refresh || !state.customerRecordData) state.customerRecordData = await apiFetch('/customer/records');
-    const purchases = filterRecordsByDateRange(state.customerRecordData.purchases, 'purchaseDate', selection.from, selection.to);
-    const payments = filterRecordsByDateRange(state.customerRecordData.payments, 'paymentDate', selection.from, selection.to);
+    const budgetMonth = state.customerBudgetMonth || monthKey(new Date());
+    const budgetMonthLabel = new Intl.DateTimeFormat('en-PH', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+        .format(new Date(`${budgetMonth}-01T00:00:00.000Z`));
+    const budget = state.customerBudget?.month === budgetMonth
+        ? state.customerBudget
+        : await apiFetch(`/customer/monthly-budget?month=${encodeURIComponent(budgetMonth)}`);
+    state.customerBudget = budget;
     const records = filterRecordsByDateRange(
-        customerExpenseEntries(state.customerRecordData.purchases, state.customerRecordData.payments, state.customerRecordData.expenses),
+        customerAllRecordEntries(state.customerRecordData.purchases, state.customerRecordData.payments, state.customerRecordData.expenses),
         'date',
         selection.from,
         selection.to
     ).map((entry) => ({
-        id: entry.sourceType === 'expense' ? entry.sourceId : entry.id,
-        purchaseId: entry.sourceType === 'expense' ? undefined : entry.sourceId,
+        id: entry.sourceId,
+        purchaseId: entry.purchaseId || (entry.sourceType === 'purchase' ? entry.sourceId : undefined),
         date: entry.date,
         type: entry.sourceType === 'purchase' ? 'Purchase' : entry.sourceType === 'payment' ? 'Payment' : 'Expense',
         description: entry.title,
-        detail: entry.sourceType === 'purchase' ? `Paid ${money(entry.paid)} · Balance ${money(entry.unpaid)}` : entry.detail,
-        amount: entry.paid + entry.unpaid,
-        balanceAmount: entry.unpaid,
-        status: entry.sourceType === 'expense' ? 'Recorded' : entry.status
+        detail: entry.sourceType === 'purchase' ? `Paid ${money(entry.paid)} · Unpaid ${money(entry.unpaid)}` : entry.detail,
+        amount: entry.amount,
+        balanceAmount: entry.unpaid || 0,
+        status: entry.status
     }));
+    const purchases = filterRecordsByDateRange(state.customerRecordData.purchases, 'purchaseDate', selection.from, selection.to);
+    const payments = filterRecordsByDateRange(state.customerRecordData.payments, 'paymentDate', selection.from, selection.to);
+    const expenses = filterRecordsByDateRange(state.customerRecordData.expenses, 'expenseDate', selection.from, selection.to);
     const outstanding = records.filter((record) => record.type === 'Purchase' && record.balanceAmount > 0)
         .map((record) => ({ id: record.id, date: record.date, type: 'Balance', description: record.description, amount: record.balanceAmount, status: record.status }));
     const purchaseRows = records.filter((record) => record.type === 'Purchase');
     const paymentRows = records.filter((record) => record.type === 'Payment');
+    const expenseRows = records.filter((record) => record.type === 'Expense');
     const purchaseTotal = purchases.reduce((sum, purchase) => sum + purchaseActualTotal(purchase), 0);
     const paymentTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const paidExpenseTotal = paymentTotal + expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
     const outstandingTotal = outstanding.reduce((sum, row) => sum + row.amount, 0);
     const filters = [
         { id: 'all', label: 'All', count: records.length, rows: records },
         { id: 'purchases', label: 'Purchases', count: purchaseRows.length, rows: purchaseRows },
         { id: 'payments', label: 'Payments', count: paymentRows.length, rows: paymentRows },
+        { id: 'expenses', label: 'Expenses', count: expenseRows.length, rows: expenseRows },
         { id: 'outstanding', label: 'Outstanding', count: outstanding.length, rows: outstanding }
     ];
     const selected = filters.find((item) => item.id === filter) || filters[0];
@@ -623,82 +691,43 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
     const visibleRows = needle ? selected.rows.filter((record) => [record.date, record.type, record.description, record.detail, record.amount, record.status].some((value) => String(value ?? '').toLowerCase().includes(needle))) : selected.rows;
     const table = visibleRows.length ? customerRecordTable(visibleRows) : emptyState(needle ? 'No matching records' : `No ${selected.label.toLowerCase()} yet`, needle ? 'Try a different search term.' : 'New records will appear here.');
     viewContainer.innerHTML = `<div class="print-record-heading"><h2>FinTrack · All records</h2><p>${selected.label} · ${shortDate(selection.from)} – ${shortDate(selection.to)}${needle ? ` · Search: ${escapeHtml(state.customerRecordSearch)}` : ''} · ${visibleRows.length} records</p></div>
-        <div class="view-heading"><div><h2>All records</h2><p>Each purchase appears once: unpaid or partial as Purchase, fully paid as Payment.</p></div><div class="transaction-filters customer-record-filters">${customerDateRangeFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
-        <div class="customer-record-charts"><section class="panel chart-panel"><div class="panel-header"><div><h3>Purchase Transaction Records</h3><p>Purchase totals in selected range</p></div><span class="record-count">${purchases.length} ${purchases.length === 1 ? 'transaction' : 'transactions'} · ${money(purchaseTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-purchase-record-chart" role="img" aria-label="Purchase transaction totals for the selected date range"></canvas></div></section><section class="panel chart-panel"><div class="panel-header"><div><h3>Payment Transaction Records</h3><p>Payment totals in selected range</p></div><span class="record-count">${payments.length} ${payments.length === 1 ? 'payment transaction' : 'payment transactions'} · ${money(paymentTotal)}</span></div><div class="customer-record-chart-canvas"><canvas id="customer-payment-record-chart" role="img" aria-label="Payment transaction totals for the selected date range"></canvas></div></section></div>
-        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchaseRows.length} ${purchaseRows.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total payments', money(paymentTotal), `${paymentRows.length} ${paymentRows.length === 1 ? 'payment record' : 'payment records'}`, '✓')}${metric('Outstanding balance', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
+        <div class="view-heading"><div><h2>All records</h2><p>Every purchase stays listed with its payment status. Payments and paid expenses are shown separately.</p></div><div class="transaction-filters customer-record-filters">${customerDateRangeFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
+        <div class="customer-record-charts customer-record-budget-chart"><section class="panel chart-panel"><div class="panel-header"><div><h3>Allocated Budget and Expenses</h3><p>Paid expenses against ${escapeHtml(budgetMonthLabel)} budget</p></div><span class="record-count">${money(budget.amount)} allocated</span></div><div class="customer-record-chart-canvas"><canvas id="customer-record-budget-chart" role="img" aria-label="Pie chart showing paid expenses and remaining monthly budget"></canvas></div></section></div>
+        <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchases.length} ${purchases.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total paid expenses', money(paidExpenseTotal), `${paymentRows.length + expenseRows.length} paid records`, '✓')}${metric('Unpaid purchases', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
         <section class="panel record-browser"><div class="record-filters" role="group" aria-label="Filter records">${filters.map((item) => `<button class="record-filter${item.id === selected.id ? ' is-active' : ''}" type="button" aria-pressed="${item.id === selected.id}" data-action="customer-record-filter" data-filter="${item.id}">${item.label}<span>${item.count}</span></button>`).join('')}<input type="search" id="customer-record-search" placeholder="Search records" value="${escapeHtml(state.customerRecordSearch)}" aria-label="Search ${selected.label.toLowerCase()} records"></div><div class="panel-header"><h3>${selected.label}</h3><span class="record-count">${needle ? `${visibleRows.length} of ` : ''}${selected.rows.length} ${selected.rows.length === 1 ? 'record' : 'records'}</span></div>${table}</section>`;
     if (restoreSearchFocus) {
         const search = viewContainer.querySelector('#customer-record-search');
         search?.focus();
         search?.setSelectionRange(state.customerRecordSearch.length, state.customerRecordSearch.length);
     }
-    drawCustomerRecordCharts(purchases, payments, selection);
+    drawCustomerRecordCharts(state.customerRecordData.payments, state.customerRecordData.expenses, budget);
 }
 
-function drawCustomerRecordCharts(purchases, payments, selection) {
+function drawCustomerRecordCharts(payments, expenses, budget) {
     customerRecordCharts.forEach((chart) => chart.destroy());
     customerRecordCharts = [];
     if (!window.Chart) return;
-
-    const { from, to } = selection;
-    const monthly = !from || !to || (new Date(`${to}T00:00:00.000Z`) - new Date(`${from}T00:00:00.000Z`)) > 62 * 86400000;
-    const periods = [];
-    if (from && to) {
-        const cursor = new Date(`${monthly ? `${from.slice(0, 7)}-01` : from}T00:00:00.000Z`);
-        const finalDate = new Date(`${to}T00:00:00.000Z`);
-        while (cursor <= finalDate) {
-            periods.push(monthly ? cursor.toISOString().slice(0, 7) : cursor.toISOString().slice(0, 10));
-            if (monthly) cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-            else cursor.setUTCDate(cursor.getUTCDate() + 1);
-        }
-    }
-    const periodKey = (date) => monthly ? date.slice(0, 7) : date;
-    const labels = periods.map((date) => new Date(`${monthly ? `${date}-01` : date}T00:00:00.000Z`).toLocaleDateString('en-PH', monthly ? { month: 'short', year: 'numeric', timeZone: 'UTC' } : { month: 'short', day: 'numeric', timeZone: 'UTC' }));
-    const totalByDate = (records, field) => {
-        const amounts = new Map(periods.map((date) => [periodKey(date), 0]));
-        for (const record of records) {
-            const date = periodKey(String(record[field] || '').slice(0, 10));
-            if (amounts.has(date)) amounts.set(date, amounts.get(date) + Number(record.totalAmount ?? record.amount ?? 0));
-        }
-        return periods.map((date) => amounts.get(periodKey(date)));
-    };
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => money(context.parsed.y) } } },
-        scales: {
-            x: { grid: { display: false }, ticks: { color: '#91a3b9', maxTicksLimit: 8 } },
-            y: { beginAtZero: true, grid: { color: 'rgba(145, 163, 185, .12)' }, ticks: { color: '#91a3b9', callback: (value) => money(value) } }
-        }
-    };
-    const charts = [
-        { id: 'customer-purchase-record-chart', records: purchases, field: 'purchaseDate', color: '#63d2c0' },
-        { id: 'customer-payment-record-chart', records: payments, field: 'paymentDate', color: '#79a9e8' }
-    ];
-    for (const chart of charts) {
-        const canvas = document.getElementById(chart.id);
-        if (!canvas) continue;
-        customerRecordCharts.push(new window.Chart(canvas, {
-            type: 'bar',
-            data: { labels, datasets: [{ data: totalByDate(chart.records, chart.field), backgroundColor: chart.color, borderRadius: 4, maxBarThickness: 28 }] },
-            options: chartOptions
-        }));
-    }
+    const paidExpenses = monthlyPaidExpenseTotals(payments, expenses, [{ key: budget.month }])[0];
+    drawCustomerBudgetChart(Number(budget.amount || 0), paidExpenses, 'customer-record-budget-chart', customerRecordCharts);
 }
 
 async function printCustomerRecords() {
     const chartImages = [];
-    const originalChartColors = customerRecordCharts.map((chart) => ({
-        chart,
-        xTicks: chart.options.scales.x.ticks.color,
-        yTicks: chart.options.scales.y.ticks.color,
-        grid: chart.options.scales.y.grid.color
-    }));
+    const originalChartColors = customerRecordCharts
+        .filter((chart) => chart.options.scales?.x && chart.options.scales?.y)
+        .map((chart) => ({
+            chart,
+            xTicks: chart.options.scales.x.ticks.color,
+            yTicks: chart.options.scales.y.ticks.color,
+            grid: chart.options.scales.y.grid.color
+        }));
     for (const { chart } of originalChartColors) {
         chart.options.scales.x.ticks.color = '#475569';
         chart.options.scales.y.ticks.color = '#475569';
         chart.options.scales.y.grid.color = 'rgba(71, 85, 105, .16)';
         chart.update('none');
+    }
+    for (const chart of customerRecordCharts) {
         try {
             const image = document.createElement('img');
             image.className = 'print-chart-image';
@@ -713,8 +742,8 @@ async function printCustomerRecords() {
     const cleanup = () => {
         document.body.classList.remove('print-customer-records');
         chartImages.forEach((image) => image.remove());
+        customerRecordCharts.forEach((chart) => chart.canvas.classList.remove('print-captured'));
         originalChartColors.forEach(({ chart, xTicks, yTicks, grid }) => {
-            chart.canvas.classList.remove('print-captured');
             chart.options.scales.x.ticks.color = xTicks;
             chart.options.scales.y.ticks.color = yTicks;
             chart.options.scales.y.grid.color = grid;
@@ -731,16 +760,30 @@ function customerRecordTable(records) {
 }
 
 function customerPaymentTable(payments, purchases = []) {
-    return `<div class="table-wrap"><table class="customer-payments-table customer-mobile-cards"><thead><tr><th>Payment ID</th><th>Transaction ID</th><th>Customer</th><th>Amount Paid</th><th>Payment Method</th><th>Payment Date</th><th>Processed By</th><th>Remarks</th><th>Actions</th></tr></thead><tbody>${payments.map((payment) => {
+    return `<div class="table-wrap"><table class="customer-payments-table customer-mobile-cards"><thead><tr><th>Payment ID</th><th>Transaction ID</th><th>User</th><th>Amount Paid</th><th>Payment Method</th><th>Payment Date</th><th>Remarks</th><th>Actions</th></tr></thead><tbody>${payments.map((payment) => {
         const purchase = purchases.find((item) => item.id === payment.purchaseId);
         const paymentId = String(payment.id || '');
         const transactionId = String(payment.purchaseId || '');
-        return `<tr data-record-id="${escapeHtml(payment.id)}" data-record-collection="customer-payments"><td data-label="Payment ID">${customerRecordSelectionCheckbox(payment, 'customer-payments')}<span title="${escapeHtml(paymentId)}">${escapeHtml(paymentId.slice(0, 8) || '—')}</span></td><td data-label="Transaction ID"><span title="${escapeHtml(transactionId)}">${escapeHtml(transactionId.slice(0, 8) || '—')}</span></td><td data-label="Customer">${escapeHtml(payment.customerName || purchase?.customerName || '—')}</td><td data-label="Amount paid">${money(payment.amount)}</td><td data-label="Payment method">${escapeHtml(payment.paymentMethod || 'Other')}</td><td data-label="Payment date">${shortDate(payment.paymentDate)}</td><td data-label="Processed by">${escapeHtml(payment.processedBy || '—')}</td><td data-label="Remarks">${escapeHtml(payment.notes || '—')}</td><td data-label="Actions"><div class="row-actions">${payment.userId === state.user?.uid ? `<button class="small-button" data-action="customer-payment-edit" data-id="${escapeHtml(payment.id)}">Edit</button><button class="small-button delete" data-action="customer-record-delete" data-kind="payments" data-id="${escapeHtml(payment.id)}">Delete</button>` : ''}</div></td></tr>`;
+        return `<tr data-record-id="${escapeHtml(payment.id)}" data-record-collection="customer-payments"><td data-label="Payment ID">${customerRecordSelectionCheckbox(payment, 'customer-payments')}<span title="${escapeHtml(paymentId)}">${escapeHtml(paymentId.slice(0, 8) || '—')}</span></td><td data-label="Transaction ID"><span title="${escapeHtml(transactionId)}">${escapeHtml(transactionId.slice(0, 8) || '—')}</span></td><td data-label="User">${escapeHtml(payment.customerName || purchase?.customerName || '—')}</td><td data-label="Amount paid">${money(payment.amount)}</td><td data-label="Payment method">${escapeHtml(payment.paymentMethod || 'Other')}</td><td data-label="Payment date">${shortDate(payment.paymentDate)}</td><td data-label="Remarks">${escapeHtml(payment.notes || '—')}</td><td data-label="Actions"><div class="row-actions">${payment.userId === state.user?.uid ? `<button class="small-button" data-action="customer-payment-edit" data-id="${escapeHtml(payment.id)}">Edit</button><button class="small-button delete" data-action="customer-record-delete" data-kind="payments" data-id="${escapeHtml(payment.id)}">Delete</button>` : ''}</div></td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
 
 function customerExpenseTable(expenses) {
-    return `<div class="table-wrap"><table class="customer-expenses-table customer-mobile-cards"><thead><tr><th>DATE</th><th>RECORD</th><th>DETAILS</th><th>PAID</th><th>UNPAID</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>${expenses.map((expense) => `<tr data-record-id="${escapeHtml(expense.id)}" data-record-collection="customer-expenses"><td data-label="Date">${shortDate(expense.date)}</td><td data-label="Record">${escapeHtml(expense.sourceType === 'purchase' ? 'Purchase' : expense.sourceType === 'payment' ? 'Payment' : 'Expense')}</td><td data-label="Details"><strong>${escapeHtml(expense.title || '—')}</strong>${expense.detail ? `<small class="record-detail">${escapeHtml(expense.detail)}</small>` : ''}</td><td data-label="Paid">${money(expense.paid)}</td><td data-label="Unpaid">${money(expense.unpaid)}</td><td data-label="Status">${statusPill(expense.status)}</td><td data-label="Actions">${expense.sourceType === 'expense' ? `<div class="row-actions"><button class="small-button" data-action="customer-expense-edit" data-id="${escapeHtml(expense.sourceId)}">Edit</button><button class="small-button delete" data-action="customer-record-delete" data-kind="expenses" data-id="${escapeHtml(expense.sourceId)}">Delete</button></div>` : '—'}</td></tr>`).join('')}</tbody></table></div>`;
+    const rows = expenses.map((expense) => {
+        const recordType = expense.sourceType === 'purchase' ? 'Purchase' : expense.sourceType === 'payment' ? 'Payment' : 'Expense';
+        const detailParts = (expense.detail || '').split(',').map((part) => part.trim()).filter(Boolean);
+        const methods = detailParts.map((part) => paymentMethods.find((method) => method.value.toLowerCase() === part.toLowerCase()));
+        const detailMarkup = methods.length && methods.every(Boolean)
+            ? `<div class="record-detail customer-payment-methods">${methods.map((method) => `<span class="customer-payment-method-badge customer-payment-method-${escapeHtml(method.value.replace(/\s+/g, '-'))}">${escapeHtml(method.label)}</span>`).join('')}</div>`
+            : expense.detail ? `<small class="record-detail">${escapeHtml(expense.detail)}</small>` : '';
+        const actions = expense.sourceType === 'expense'
+            ? `<div class="row-actions"><button class="small-button" data-action="customer-expense-edit" data-id="${escapeHtml(expense.sourceId)}">Edit</button><button class="small-button delete" data-action="customer-record-delete" data-kind="expenses" data-id="${escapeHtml(expense.sourceId)}">Delete</button></div>`
+            : expense.receiptId
+                ? `<div class="row-actions"><button class="small-button record-print-button" type="button" data-action="customer-record-print" data-record-type="${escapeHtml(recordType)}" data-record-id="${escapeHtml(expense.receiptId)}" aria-label="Print ${recordType.toLowerCase()} receipt" title="Print receipt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div>`
+                : '—';
+        return `<tr data-record-id="${escapeHtml(expense.id)}" data-record-collection="customer-expenses"><td data-label="Date">${shortDate(expense.date)}</td><td data-label="Record">${escapeHtml(recordType)}</td><td data-label="Details"><strong>${escapeHtml(expense.title || '—')}</strong>${detailMarkup}</td><td data-label="Status">${statusPill(expense.status)}</td><td data-label="Actions">${actions}</td></tr>`;
+    }).join('');
+    return `<div class="table-wrap"><table class="customer-expenses-table customer-mobile-cards"><thead><tr><th>DATE</th><th>RECORD</th><th>DETAILS</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function customerRecordSelectionCheckbox(record, collection) {
@@ -832,7 +875,7 @@ async function openCustomerPurchaseForm(selectedProductId = '') {
     const customerName = state.profile?.customerName || state.profile?.fullName || state.user?.email || 'My account';
     const fields = `<div class="field"><label for="customer-purchase-customer">Customer</label><input id="customer-purchase-customer" type="text" value="${escapeHtml(customerName)}" readonly><input type="hidden" name="customerId" value="${escapeHtml(customerId)}"></div>
         ${fieldMarkup(['purchaseDate', 'Purchase date', 'date', true], new Date().toISOString().slice(0, 10))}
-        <div class="field"><span class="field-label">Purchase items</span><div class="customer-purchase-line-header"><span>Product / plan</span><span>Quantity</span><span>Line total</span><span></span></div><div class="customer-purchase-lines" data-customer-purchase-lines>${customerPurchaseLineMarkup(activeProducts, selectedProductId, plans)}</div><button class="text-button customer-purchase-add" type="button" data-action="add-customer-purchase-line">+ Add another item</button></div>
+        <div class="field customer-purchase-items-field"><span class="field-label">Purchase items</span><div class="customer-purchase-line-header"><span>Product / plan</span><span>Quantity</span><span>Line total</span><span></span></div><div class="customer-purchase-lines" data-customer-purchase-lines>${customerPurchaseLineMarkup(activeProducts, selectedProductId, plans)}</div><button class="text-button customer-purchase-add" type="button" data-action="add-customer-purchase-line">+ Add another item</button></div>
         ${fieldMarkup(['remarks', 'Remarks', 'textarea'])}
         <div class="purchase-total"><span>Actual total</span><strong data-purchase-total>${money(0)}</strong></div>`;
     modalRoot.innerHTML = `<div class="modal-backdrop" data-close-modal><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">Create Purchase Transaction</h2><button class="modal-close" type="button" data-close-modal aria-label="Close">×</button></div><div class="modal-content"><form class="data-form" data-record-form="customer-purchase">${fields}<div class="modal-actions"><button class="button button-secondary" type="button" data-close-modal>Cancel</button><button class="button" type="submit">Create transaction</button></div></form></div></section></div>`;
@@ -858,7 +901,7 @@ async function openCustomerPurchaseEditForm(id) {
     }).join('');
     const fields = `<div class="field"><label for="customer-purchase-customer">Customer</label><select id="customer-purchase-customer" name="customerId" required>${customerOptions}</select></div>
         ${fieldMarkup(['purchaseDate', 'Purchase date', 'date', true], purchase.purchaseDate)}
-        <div class="field"><span class="field-label">Purchase items</span><div class="customer-purchase-line-header"><span>Product / plan</span><span>Quantity</span><span>Line total</span><span></span></div><div class="customer-purchase-lines" data-customer-purchase-lines>${purchaseLines || customerPurchaseLineMarkup(products, '', plans)}</div><button class="text-button customer-purchase-add" type="button" data-action="add-customer-purchase-line">+ Add another item</button></div>
+        <div class="field customer-purchase-items-field"><span class="field-label">Purchase items</span><div class="customer-purchase-line-header"><span>Product / plan</span><span>Quantity</span><span>Line total</span><span></span></div><div class="customer-purchase-lines" data-customer-purchase-lines>${purchaseLines || customerPurchaseLineMarkup(products, '', plans)}</div><button class="text-button customer-purchase-add" type="button" data-action="add-customer-purchase-line">+ Add another item</button></div>
         ${fieldMarkup(['remarks', 'Remarks', 'textarea'], purchase.remarks || '')}
         <div class="purchase-total"><span>Actual total</span><strong data-purchase-total>${money(purchase.totalAmount)}</strong></div>`;
     customerFormModal('Edit purchase transaction', 'customer-purchase', fields, 'Save changes');
@@ -893,7 +936,7 @@ function customerPurchaseLineMarkup(products, selectedProductId = '', plans = []
     const planOptions = plans.filter((plan) => plan.state !== 'inactive' || `plan:${plan.id}` === selectedProductId).map((plan) => {
         const legacyTotal = (plan.items || []).reduce((total, item) => total + Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0)), 0);
         const total = Number(plan.estimatedTotal ?? plan.totalPrice ?? legacyTotal);
-        return `<option value="plan:${escapeHtml(plan.id)}" data-price="${total}" ${`plan:${plan.id}` === selectedProductId ? 'selected' : ''}>${escapeHtml(plan.planName)} · Plan · ${money(total)}</option>`;
+        return `<option value="plan:${escapeHtml(plan.id)}" data-price="${total}" data-plan-type="${escapeHtml(plan.planType)}" ${`plan:${plan.id}` === selectedProductId ? 'selected' : ''}>${escapeHtml(plan.planName)} · ${escapeHtml(plan.planType === 'services' ? 'Service / bills plan' : plan.planType === 'groceries' ? 'Grocery plan' : 'Product plan')} · ${money(total)}</option>`;
     }).join('');
     const options = `<option value="">Choose a product, service, or plan</option>${productOptions ? `<optgroup label="Products & services">${productOptions}</optgroup>` : ''}${planOptions ? `<optgroup label="Purchase plans">${planOptions}</optgroup>` : ''}`;
     return `<div class="customer-purchase-line"><select name="productId" aria-label="Product, service, or plan" required>${options}</select><input name="quantity" type="number" min="1" step="1" value="${Number(quantity) || 1}" aria-label="Quantity" required><strong data-line-total>${money(0)}</strong><button class="small-button delete" type="button" data-action="remove-customer-purchase-line" aria-label="Remove item" title="Remove item" disabled>×</button><div class="purchase-plan-actuals" data-plan-actuals hidden></div></div>`;
@@ -901,19 +944,42 @@ function customerPurchaseLineMarkup(products, selectedProductId = '', plans = []
 
 function updateCustomerPurchasePlanDetails(line) {
     const panel = line.querySelector('[data-plan-actuals]');
-    const selectedId = line.querySelector('[name="productId"]')?.value || '';
+    const select = line.querySelector('[name="productId"]');
+    const selectedId = select?.value || '';
     const plan = selectedId.startsWith('plan:') ? state.customerPlanData?.find((item) => `plan:${item.id}` === selectedId) : null;
+    const quantityInput = line.querySelector('[name="quantity"]');
+    const servicePlan = plan?.planType === 'services';
+    line.classList.toggle('is-service-plan', servicePlan);
+    if (servicePlan && !quantityInput.disabled) {
+        quantityInput.dataset.previousQuantity = quantityInput.value;
+        quantityInput.value = '1';
+        quantityInput.disabled = true;
+        quantityInput.hidden = true;
+    } else if (!servicePlan && quantityInput.disabled) {
+        quantityInput.disabled = false;
+        quantityInput.hidden = false;
+        quantityInput.value = quantityInput.dataset.previousQuantity || '1';
+        delete quantityInput.dataset.previousQuantity;
+    }
+    updateCustomerPurchaseServiceLayout(line.parentElement);
     if (!panel) return;
     if (!plan) { panel.hidden = true; panel.innerHTML = ''; return; }
     const items = plan.items || [];
     panel.hidden = false;
     const planEstimatedTotal = Number(plan.estimatedTotal ?? plan.totalPrice ?? items.reduce((sum, item) => sum + Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0)), 0));
-    panel.innerHTML = `<div class="purchase-plan-title"><strong>${escapeHtml(plan.planName)} items</strong></div><div class="purchase-plan-header"><span>Item</span><span>Qty</span><span>Estimated</span><span>Actual</span></div>${items.map((item, index) => {
-        const quantity = Number(item.quantity || 0);
+    const servicePlanHeader = plan.planType === 'services';
+    panel.innerHTML = `<div class="purchase-plan-title"><strong>${escapeHtml(plan.planName)} items</strong></div><div class="purchase-plan-header${servicePlanHeader ? ' is-service-plan-header' : ''}">${servicePlanHeader ? '<span>Service / bill</span><span>Estimated</span><span>Actual</span>' : '<span>Item</span><span>Qty</span><span>Estimated</span><span>Actual</span>'}</div>${items.map((item, index) => {
+        const quantity = servicePlanHeader ? 1 : Number(item.quantity || 0);
         const estimated = Number(item.subtotal ?? quantity * Number(item.estimatedPrice ?? item.price ?? 0));
-        return `<div class="purchase-plan-item" data-estimated-subtotal="${estimated}"><span>${escapeHtml(item.itemName || 'Item')}</span><span>${quantity}</span><span>${money(estimated)}</span><input class="plan-actual-price" type="number" min="0" step="0.01" value="${estimated}" data-item-index="${index}" aria-label="Actual price for ${escapeHtml(item.itemName || 'item')}"></div>`;
+        return `<div class="purchase-plan-item${servicePlanHeader ? ' is-service-plan-item' : ''}" data-estimated-subtotal="${estimated}"><span>${escapeHtml(item.itemName || 'Item')}</span>${servicePlanHeader ? '' : `<span>${quantity}</span>`}<span>${money(estimated)}</span><input class="plan-actual-price" type="number" min="0" step="0.01" value="${estimated}" data-item-index="${index}" aria-label="Actual amount for ${escapeHtml(item.itemName || 'item')}"></div>`;
     }).join('')}<div class="purchase-plan-summary"><span>Estimated total <strong data-plan-estimated>${money(planEstimatedTotal)}</strong></span><span>Budget <strong data-plan-budget>${money(planMoneyValue(plan.budget) ?? 0)}</strong></span><span>Actual total <strong data-plan-actual-total>${money(planEstimatedTotal)}</strong></span><span>Remaining <strong data-plan-actual-remaining>${money((planMoneyValue(plan.budget) ?? 0) - planEstimatedTotal)}</strong></span><strong class="plan-budget-status" data-plan-actual-status>UNDER BUDGET</strong></div>`;
     updateCustomerPurchaseTotal();
+}
+
+function updateCustomerPurchaseServiceLayout(linesContainer) {
+    const lines = [...linesContainer.querySelectorAll('.customer-purchase-line')];
+    const servicesOnly = lines.length > 0 && lines.every((purchaseLine) => purchaseLine.querySelector('[name="quantity"]').disabled);
+    linesContainer.closest('.customer-purchase-items-field').classList.toggle('services-only', servicesOnly);
 }
 
 function openCustomerProductForm(product = null) {
@@ -923,17 +989,42 @@ function openCustomerProductForm(product = null) {
     if (product) modalRoot.querySelector('[data-record-form="customer-product"]').dataset.id = product.id;
 }
 
-function customerPlanItemMarkup(item = {}) {
+function customerPlanItemHeaderMarkup(planType) {
+    return planType === 'services'
+        ? '<span>Service / bill</span><span>Estimated amount</span><span>Subtotal</span><span></span>'
+        : '<span>Item</span><span>Qty</span><span>Estimated price</span><span>Subtotal</span><span></span>';
+}
+
+function customerPlanItemMarkup(item = {}, planType = 'products') {
     const itemName = escapeHtml(item.itemName || '');
     const quantity = Number(item.quantity || 1);
     const price = Number(item.estimatedPrice ?? item.price ?? 0);
-    return `<div class="customer-plan-item"><input name="itemName" type="text" placeholder="Item" aria-label="Item name" maxlength="150" value="${itemName}" required><input name="itemQuantity" type="number" min="1" step="1" value="${quantity}" aria-label="Quantity" required><input name="itemPrice" type="number" min="0" step="0.01" value="${price}" aria-label="Estimated price" required><strong data-item-subtotal>${money(quantity * price)}</strong><button class="small-button delete" type="button" data-action="remove-customer-plan-item" aria-label="Remove item" title="Remove item">×</button></div>`;
+    const services = planType === 'services';
+    const quantityInput = services ? '' : `<input name="itemQuantity" type="number" min="1" step="1" value="${quantity}" aria-label="Quantity" required>`;
+    return `<div class="customer-plan-item${services ? ' is-service-plan-item' : ''}"><input name="itemName" type="text" placeholder="${services ? 'Service or bill name' : 'Item'}" aria-label="${services ? 'Service or bill name' : 'Item name'}" maxlength="150" value="${itemName}" required>${quantityInput}<input name="itemPrice" type="number" min="0" step="0.01" value="${price}" placeholder="${services ? 'Estimated amount' : ''}" aria-label="${services ? 'Estimated bill amount' : 'Estimated price'}" required><strong data-item-subtotal>${money((services ? 1 : quantity) * price)}</strong><button class="small-button delete" type="button" data-action="remove-customer-plan-item" aria-label="Remove item" title="Remove item">×</button></div>`;
+}
+
+function updateCustomerPlanType(form) {
+    const planType = form.querySelector('[name="planType"]').value;
+    const items = [...form.querySelectorAll('.customer-plan-item')].map((item) => ({
+        itemName: item.querySelector('[name="itemName"]').value,
+        quantity: Number(item.querySelector('[name="itemQuantity"]')?.value || 1),
+        estimatedPrice: Number(item.querySelector('[name="itemPrice"]').value)
+    }));
+    const header = form.querySelector('.customer-plan-item-header');
+    header.classList.toggle('is-service-plan-header', planType === 'services');
+    header.innerHTML = customerPlanItemHeaderMarkup(planType);
+    const itemsContainer = form.querySelector('[data-customer-plan-items]');
+    itemsContainer.closest('.field').querySelector('.field-label').textContent = planType === 'services' ? 'Bills and services' : planType === 'groceries' ? 'Grocery items' : 'Products';
+    itemsContainer.innerHTML = items.map((item) => customerPlanItemMarkup(item, planType)).join('');
+    updateCustomerPlanTotal();
 }
 
 function openCustomerPlanForm(plan = null) {
-    const fields = `<div class="customer-plan-basics"><div class="field"><label for="customer-plan-name">Plan name</label><input id="customer-plan-name" name="planName" placeholder="e.g. Grocery" maxlength="150" required></div>${fieldMarkup(['budget', 'Budget', 'number', true])}${fieldMarkup(['planDate', 'Date', 'date', true], localDateInputValue(new Date()))}</div>
+    const planType = plan?.planType || 'products';
+    const fields = `<div class="customer-plan-basics"><div class="field"><label for="customer-plan-name">Plan name</label><input id="customer-plan-name" name="planName" placeholder="e.g. Home appliances" maxlength="150" required></div><div class="field"><label for="customer-plan-type">Plan category</label><select id="customer-plan-type" name="planType"><option value="products" ${planType === 'products' ? 'selected' : ''}>Products</option><option value="services" ${planType === 'services' ? 'selected' : ''}>Services / Bills</option><option value="groceries" ${planType === 'groceries' ? 'selected' : ''}>Groceries</option></select></div>${fieldMarkup(['budget', 'Budget', 'number', true])}${fieldMarkup(['planDate', 'Date', 'date', true], localDateInputValue(new Date()))}</div>
         <input type="hidden" name="state" value="${plan?.state === 'inactive' ? 'inactive' : 'active'}">
-        <div class="field"><span class="field-label">Items to buy</span><div class="customer-plan-item-header"><span>Item</span><span>Qty</span><span>Estimated price</span><span>Subtotal</span><span></span></div><div class="customer-plan-items" data-customer-plan-items>${customerPlanItemMarkup()}</div><button class="small-button catalog-icon-button customer-plan-add" type="button" data-action="add-customer-plan-item" aria-label="Add item" title="Add item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
+        <div class="field"><span class="field-label">${planType === 'services' ? 'Bills and services' : planType === 'groceries' ? 'Grocery items' : 'Products'}</span><div class="customer-plan-item-header${planType === 'services' ? ' is-service-plan-header' : ''}">${customerPlanItemHeaderMarkup(planType)}</div><div class="customer-plan-items" data-customer-plan-items>${customerPlanItemMarkup({}, planType)}</div><button class="small-button catalog-icon-button customer-plan-add" type="button" data-action="add-customer-plan-item" aria-label="Add item" title="Add item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
         <div class="customer-plan-summary"><div><span>Estimated total</span><strong data-plan-total>${money(0)}</strong></div><div><span>Remaining</span><strong data-plan-remaining>${money(0)}</strong></div><div><span>Status</span><strong class="plan-budget-status" data-plan-status>UNDER BUDGET</strong></div></div>`;
     customerFormModal(plan ? 'Edit plan' : 'Add plan', 'customer-plan', fields, plan ? 'Save changes' : 'Save plan');
     const form = modalRoot.querySelector('[data-record-form="customer-plan"]');
@@ -943,7 +1034,7 @@ function openCustomerPlanForm(plan = null) {
         form.querySelector('[name="budget"]').value = plan.budget ?? 0;
         form.querySelector('[name="planDate"]').value = plan.planDate || localDateInputValue(new Date());
         const items = plan.items?.length ? plan.items : [{}];
-        form.querySelector('[data-customer-plan-items]').innerHTML = items.map(customerPlanItemMarkup).join('');
+        form.querySelector('[data-customer-plan-items]').innerHTML = items.map((item) => customerPlanItemMarkup(item, planType)).join('');
     }
     updateCustomerPlanTotal();
 }
@@ -951,9 +1042,10 @@ function openCustomerPlanForm(plan = null) {
 function updateCustomerPlanTotal() {
     const form = modalRoot.querySelector('[data-record-form="customer-plan"]');
     if (!form) return;
+    const planType = form.querySelector('[name="planType"]').value;
     let total = 0;
     form.querySelectorAll('.customer-plan-item').forEach((item) => {
-        const quantity = Math.max(0, Math.floor(Number(item.querySelector('[name="itemQuantity"]').value) || 0));
+        const quantity = planType === 'services' ? 1 : Math.max(0, Math.floor(Number(item.querySelector('[name="itemQuantity"]').value) || 0));
         const price = Math.max(0, Number(item.querySelector('[name="itemPrice"]').value) || 0);
         const subtotal = quantity * price;
         total += subtotal;
@@ -1221,17 +1313,19 @@ async function saveRecord(form) {
         return apiFetch(`/customer/products${id ? `/${encodeURIComponent(id)}` : ''}`, { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) });
     }
     if (name === 'customer-plan') {
+        const planType = String(formData.get('planType') || 'products');
         const items = [...form.querySelectorAll('.customer-plan-item')].map((item) => ({
             itemName: item.querySelector('[name="itemName"]').value.trim(),
-            quantity: Number(item.querySelector('[name="itemQuantity"]').value),
+            ...(planType === 'services' ? {} : { quantity: Number(item.querySelector('[name="itemQuantity"]').value) }),
             estimatedPrice: Number(item.querySelector('[name="itemPrice"]').value)
         }));
-        const plan = { planName: String(formData.get('planName') || '').trim(), planDate: formData.get('planDate'), budget: Number(formData.get('budget')), state: formData.get('state') || 'active', items };
+        const plan = { planName: String(formData.get('planName') || '').trim(), planType, planDate: formData.get('planDate'), budget: Number(formData.get('budget')), state: formData.get('state') || 'active', items };
         const path = `/customer/plans${id ? `/${encodeURIComponent(id)}` : ''}`;
         const method = id ? 'PATCH' : 'POST';
         try {
             return await apiFetch(path, { method, body: JSON.stringify(plan) });
         } catch (error) {
+            if (planType !== 'products') throw error;
             if (!/Unrecognized key|received nan/i.test(error.message || '')) throw error;
             const legacyItems = items.map(({ itemName, quantity, estimatedPrice }) => ({ itemName, quantity, price: estimatedPrice }));
             const totalPrice = legacyItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
@@ -1455,9 +1549,20 @@ document.addEventListener('submit', async (event) => {
                 await signInWithEmailAndPassword(auth, values.get('email'), values.get('password'));
             }
         } else {
+            const view = recordForm.dataset.recordForm;
+            if (view === 'customer-budget') {
+                const values = new FormData(recordForm);
+                const month = String(values.get('month') || '');
+                const amount = Number(values.get('amount'));
+                await apiFetch('/customer/monthly-budget', {
+                    method: 'PUT',
+                    body: JSON.stringify({ month, amount })
+                });
+                notify('Monthly budget saved.');
+                return renderCustomerDashboard(month);
+            }
             const editing = Boolean(recordForm.dataset.id);
             const savedRecord = await saveRecord(recordForm);
-            const view = recordForm.dataset.recordForm;
             closeModal();
             if (view === 'customer-profile') {
                 state.profile = { ...state.profile, ...savedRecord };
@@ -1641,12 +1746,19 @@ document.addEventListener('click', async (event) => {
         }
         if (action === 'new-customer-product') return openCustomerProductForm();
         if (action === 'new-customer-plan') return openCustomerPlanForm();
+        if (action === 'customer-plan-category') return renderCustomerCatalog(actionButton.dataset.category);
         if (action === 'customer-plan-edit') {
             const plan = state.customerPlanData.find((item) => item.id === id);
             if (!plan) throw new Error('Plan could not be found. Refresh the page and try again.');
             return openCustomerPlanForm(plan);
         }
-        if (action === 'add-customer-plan-item') { modalRoot.querySelector('[data-customer-plan-items]').insertAdjacentHTML('beforeend', customerPlanItemMarkup()); updateCustomerPlanTotal(); return; }
+        if (action === 'add-customer-plan-item') {
+            const form = actionButton.closest('[data-record-form="customer-plan"]');
+            const planType = form.querySelector('[name="planType"]').value;
+            form.querySelector('[data-customer-plan-items]').insertAdjacentHTML('beforeend', customerPlanItemMarkup({}, planType));
+            updateCustomerPlanTotal();
+            return;
+        }
         if (action === 'remove-customer-plan-item') { actionButton.closest('.customer-plan-item')?.remove(); updateCustomerPlanTotal(); return; }
         if (action === 'customer-plan-toggle') {
             await apiFetch(`/customer/plans/${encodeURIComponent(id)}/state`, { method: 'PATCH', body: JSON.stringify({ state: actionButton.dataset.state }) });
@@ -1693,10 +1805,16 @@ document.addEventListener('click', async (event) => {
                     if (!lines || !template) return;
                     const line = template.cloneNode(true);
                     line.querySelector('[name="productId"]').value = '';
-                    line.querySelector('[name="quantity"]').value = '1';
+                    const quantity = line.querySelector('[name="quantity"]');
+                    quantity.value = '1';
+                    quantity.disabled = false;
+                    quantity.hidden = false;
+                    delete quantity.dataset.previousQuantity;
+                    line.classList.remove('is-service-plan');
                     const panel = line.querySelector('[data-plan-actuals]');
                     if (panel) { panel.hidden = true; panel.innerHTML = ''; }
                     lines.append(line);
+                    updateCustomerPurchaseServiceLayout(lines);
                     updateCustomerPurchaseTotal();
                     line.querySelector('[name="productId"]').focus();
                     return;
@@ -1704,6 +1822,7 @@ document.addEventListener('click', async (event) => {
                 if (action === 'remove-customer-purchase-line') {
                     if (modalRoot.querySelectorAll('.customer-purchase-line').length > 1) {
                         actionButton.closest('.customer-purchase-line').remove();
+                        updateCustomerPurchaseServiceLayout(modalRoot.querySelector('[data-customer-purchase-lines]'));
                         updateCustomerPurchaseTotal();
                     }
                     return;
@@ -1814,6 +1933,13 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('change', (event) => {
+    if (event.target.matches('[name="planType"]') && event.target.closest('[data-record-form="customer-plan"]')) {
+        updateCustomerPlanType(event.target.closest('[data-record-form="customer-plan"]'));
+        return;
+    }
+    if (event.target.id === 'customer-budget-month') {
+        return renderCustomerDashboard(event.target.value).catch((error) => notify(error.message || 'Could not load this month’s budget.', true));
+    }
     if (event.target.id === 'record-select-all' || event.target.matches('.record-row-select')) {
         const selectedIds = state.recordSelection.ids;
         const rowCheckboxes = [...viewContainer.querySelectorAll('.record-row-select')];

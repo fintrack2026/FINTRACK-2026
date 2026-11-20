@@ -7,7 +7,7 @@ import { createProduct, deleteProduct, listProducts, updateProduct } from '../co
 import { createPurchase, deletePurchase, getPurchase, listPurchases, receipt, updatePurchase } from '../controllers/purchases.js';
 import { dashboard, reports } from '../controllers/reports.js';
 import { deleteRegisteredUser, getRegisteredUser, listRegisteredUsers, registeredUserOverview, setRegisteredUserStatus } from '../controllers/users.js';
-import { createCustomerContact, createCustomerExpense, createCustomerPlan, createCustomerProduct, customerPurchaseReceipt, deleteCustomerContact, deleteCustomerExpense, deleteCustomerPayment, deleteCustomerPlan, deleteCustomerProduct, deleteCustomerPurchase, ensureCustomerProfile, listCustomerCatalog, listCustomerContacts, listCustomerExpenses, listCustomerPayments, listCustomerPlans, listCustomerProducts, listCustomerPurchases, listCustomerRecords, listCustomerTransactions, provisionCustomerAccount, updateCustomerContact, updateCustomerExpense, updateCustomerPayment, updateCustomerProfile, updateCustomerPurchase, updateCustomerPlan, updateCustomerPlanState, updateCustomerProduct, updateCustomerProductStatus } from '../controllers/customer-portal.js';
+import { createCustomerContact, createCustomerExpense, createCustomerPlan, createCustomerProduct, customerPurchaseReceipt, deleteCustomerContact, deleteCustomerExpense, deleteCustomerPayment, deleteCustomerPlan, deleteCustomerProduct, deleteCustomerPurchase, ensureCustomerProfile, getCustomerMonthlyBudget, listCustomerCatalog, listCustomerContacts, listCustomerExpenses, listCustomerPayments, listCustomerPlans, listCustomerProducts, listCustomerPurchases, listCustomerRecords, listCustomerTransactions, provisionCustomerAccount, saveCustomerMonthlyBudget, updateCustomerContact, updateCustomerExpense, updateCustomerPayment, updateCustomerProfile, updateCustomerPurchase, updateCustomerPlan, updateCustomerPlanState, updateCustomerProduct, updateCustomerProductStatus } from '../controllers/customer-portal.js';
 import { firebaseConfigured } from '../config/firebase.js';
 import { firestore } from '../services/firestore.js';
 import { requireCustomerAuth, requireWorkspaceMember } from '../middleware/auth.js';
@@ -29,6 +29,8 @@ router.patch('/customer/products/:id', requireCustomerAuth, updateCustomerProduc
 router.patch('/customer/products/:id/status', requireCustomerAuth, updateCustomerProductStatus);
 router.delete('/customer/products/:id', requireCustomerAuth, deleteCustomerProduct);
 router.get('/customer/plans', requireCustomerAuth, listCustomerPlans);
+router.get('/customer/monthly-budget', requireCustomerAuth, getCustomerMonthlyBudget);
+router.put('/customer/monthly-budget', requireCustomerAuth, saveCustomerMonthlyBudget);
 router.post('/customer/plans', requireCustomerAuth, createCustomerPlan);
 router.patch('/customer/plans/:id', requireCustomerAuth, updateCustomerPlan);
 router.patch('/customer/plans/:id/state', requireCustomerAuth, updateCustomerPlanState);

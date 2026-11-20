@@ -7,7 +7,34 @@ export const customerSchema = z.object({ customerName: z.string().trim().min(1).
 export const customerProfileSchema = z.object({ fullName: z.string().trim().min(1).max(150), contactNumber: phoneNumberSchema, address: z.string().trim().max(500).optional().default(''), avatarId: z.enum(['mint', 'ocean', 'coral', 'sunshine', 'forest', 'berry']).optional().default('mint') }).strict();
 export const customerProvisionSchema = z.object({ mobileNumber: phoneNumberSchema }).passthrough();
 export const productSchema = z.object({ productName: z.string().trim().min(1).max(150), category: z.string().trim().max(100).optional().default(''), description: z.string().trim().max(1000).optional().default(''), type: z.enum(['product', 'service']), price: z.coerce.number().finite().min(0), stockQuantity: z.coerce.number().int().min(0), status: z.enum(['active', 'inactive']) });
-export const customerPlanSchema = z.object({ planName: z.string().trim().min(1).max(150), planDate: dateSchema, budget: z.coerce.number().finite().min(0), state: z.enum(['active', 'inactive']).optional().default('active'), items: z.array(z.object({ itemName: z.string().trim().min(1).max(150), quantity: z.coerce.number().int().positive(), estimatedPrice: z.coerce.number().finite().min(0) }).strict()).min(1).max(50) }).strict();
+export const customerPlanSchema = z.object({
+    planName: z.string().trim().min(1).max(150),
+    planType: z.enum(['products', 'services', 'groceries']).optional().default('products'),
+    planDate: dateSchema,
+    budget: z.coerce.number().finite().min(0),
+    state: z.enum(['active', 'inactive']).optional().default('active'),
+    items: z.array(z.object({
+        itemName: z.string().trim().min(1).max(150),
+        quantity: z.coerce.number().int().positive().optional(),
+        estimatedPrice: z.coerce.number().finite().min(0)
+    }).strict()).min(1).max(50)
+}).strict()
+    .superRefine((plan, context) => {
+        plan.items.forEach((item, index) => {
+            if (plan.planType === 'services' && item.quantity !== undefined) {
+                context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'quantity'], message: 'Services and bills do not use quantities.' });
+            }
+            if (plan.planType !== 'services' && item.quantity === undefined) {
+                context.addIssue({ code: z.ZodIssueCode.custom, path: ['items', index, 'quantity'], message: 'Quantity is required for product and grocery plans.' });
+            }
+        });
+    })
+    .transform((plan) => ({
+        ...plan,
+        items: plan.items.map((item) => ({ ...item, quantity: item.quantity ?? 1 }))
+    }));
+export const customerMonthlyBudgetMonthSchema = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Month must use YYYY-MM.') }).strict();
+export const customerMonthlyBudgetSchema = customerMonthlyBudgetMonthSchema.extend({ amount: z.coerce.number().finite().min(0) }).strict();
 export const customerPlanStateSchema = z.object({ state: z.enum(['active', 'inactive']) }).strict();
 export const customerProductStatusSchema = z.object({ status: z.enum(['active', 'inactive']) }).strict();
 export const expenseSchema = z.object({ title: z.string().trim().min(1).max(150), category: z.string().trim().min(1).max(100), amount: z.coerce.number().finite().positive(), expenseDate: dateSchema, paymentMethod: z.string().trim().max(50).optional().default(''), description: z.string().trim().max(1000).optional().default('') });

@@ -28,13 +28,6 @@ export function purchaseStockItems(items = []) {
     return [...quantities.values()];
 }
 
-export async function purchaseWithProcessorName(purchase, fallbackName = '') {
-    if (purchase.processedBy) return purchase;
-    if (!purchase.userId) return { ...purchase, processedBy: fallbackName || '—' };
-    const profile = await firestore.collection('users').doc(purchase.userId).get();
-    return { ...purchase, processedBy: profile.data()?.fullName || profile.data()?.email || fallbackName || '—' };
-}
-
 export function purchaseReceiptPdf(purchase) {
     return new Promise((resolve, reject) => {
         const items = purchase.items || [];
@@ -68,15 +61,10 @@ export function purchaseReceiptPdf(purchase) {
         document.font('Helvetica-Bold').fontSize(8).fillColor('#667586').text('DATE', left, y);
         document.font('Helvetica').fontSize(8).fillColor('#263445').text(purchase.purchaseDate || '—', left + 62, y, { width: contentWidth - 62, align: 'right' });
         y += 23;
-        document.font('Helvetica-Bold').fontSize(8).fillColor('#667586').text('CUSTOMER', left, y);
+        document.font('Helvetica-Bold').fontSize(8).fillColor('#667586').text('USER', left, y);
         y += 12;
         document.font('Helvetica').fontSize(9).fillColor('#263445').text(purchase.customerName || '—', left, y, { width: contentWidth });
-        y += Math.max(15, document.heightOfString(purchase.customerName || '—', { width: contentWidth, font: 'Helvetica', fontSize: 9 })) + 6;
-        document.font('Helvetica-Bold').fontSize(8).fillColor('#667586').text('PROCESSED BY', left, y);
-        y += 12;
-        const processor = purchase.processedBy || '—';
-        document.font('Helvetica-Bold').fontSize(10).fillColor('#142238').text(processor, left, y, { width: contentWidth });
-        y += Math.max(16, document.heightOfString(processor, { width: contentWidth, font: 'Helvetica-Bold', fontSize: 10 })) + 10;
+        y += Math.max(15, document.heightOfString(purchase.customerName || '—', { width: contentWidth, font: 'Helvetica', fontSize: 9 })) + 16;
         document.moveTo(left, y).lineTo(left + contentWidth, y).dash(2, { space: 3 }).strokeColor('#8492a3').stroke().undash();
         y += 12;
 
@@ -89,14 +77,16 @@ export function purchaseReceiptPdf(purchase) {
             document.font('Helvetica').fontSize(9).fillColor('#263445').text(name, left, y, { width: contentWidth });
             document.font('Helvetica-Bold').fontSize(9).fillColor('#263445').text(formatAmount(item.subtotal), left, y, { width: contentWidth, align: 'right' });
             y += Math.max(14, itemHeight) + 2;
-            document.font('Helvetica').fontSize(8).fillColor('#667586').text(`${Number(item.quantity)} x ${formatAmount(item.price)}`, left, y);
-            y += 15;
+            if (item.planType !== 'services') {
+                document.font('Helvetica').fontSize(8).fillColor('#667586').text(`${Number(item.quantity)} x ${formatAmount(item.price)}`, left, y);
+                y += 15;
+            }
             if (item.includedItems?.length) {
                 document.font('Helvetica-Bold').fontSize(7).fillColor('#667586').text('INCLUDED ITEMS', left + 5, y);
                 y += 11;
                 for (const included of item.includedItems) {
                     const includedName = String(included.itemName || 'Item');
-                    const quantity = (Number(included.quantity) || 0) * (Number(item.quantity) || 1);
+                    const quantity = (item.planType === 'services' ? 1 : Number(included.quantity) || 0) * (Number(item.quantity) || 1);
                     const unitPrice = Number(included.estimatedPrice ?? included.price ?? 0);
                     const subtotal = Number(included.actualSubtotal ?? included.subtotal ?? unitPrice * Number(included.quantity || 0)) * (Number(item.quantity) || 1);
                     const estimatedSubtotal = Number(included.estimatedSubtotal ?? included.subtotal ?? unitPrice * Number(included.quantity || 0)) * (Number(item.quantity) || 1);
@@ -104,7 +94,10 @@ export function purchaseReceiptPdf(purchase) {
                     const includedNameHeight = document.heightOfString(includedName, { width: nameWidth, font: 'Helvetica', fontSize: 8 });
                     document.font('Helvetica').fontSize(8).fillColor('#263445').text(includedName, left + 5, y, { width: nameWidth });
                     document.font('Helvetica-Bold').fontSize(8).fillColor('#263445').text(formatAmount(subtotal), left + contentWidth - 60, y, { width: 60, align: 'right' });
-                    document.font('Helvetica').fontSize(7).fillColor('#667586').text(`Estimated ${formatAmount(estimatedSubtotal)}  ·  Actual ${formatAmount(subtotal)}  ·  ${quantity} x ${formatAmount(unitPrice)}`, left + 5, y + Math.max(10, includedNameHeight));
+                    const pricingDetail = item.planType === 'services'
+                        ? `Estimated ${formatAmount(estimatedSubtotal)}  ·  Actual ${formatAmount(subtotal)}`
+                        : `Estimated ${formatAmount(estimatedSubtotal)}  ·  Actual ${formatAmount(subtotal)}  ·  ${quantity} x ${formatAmount(unitPrice)}`;
+                    document.font('Helvetica').fontSize(7).fillColor('#667586').text(pricingDetail, left + 5, y + Math.max(10, includedNameHeight));
                     y += Math.max(25, includedNameHeight + 13);
                 }
                 y += 3;
@@ -198,7 +191,7 @@ export async function createPurchase(req, res, next) {
                     const alternatePlanBudget = Number(plan.planBudget ?? plan.budgetAmount ?? plan.plannedBudget ?? plan.estimatedBudget ?? plan.spendingLimit ?? plan.totalBudget ?? plan.Budget);
                     const descriptionPlanBudget = descriptionBudget ? Number(descriptionBudget[1].replaceAll(',', '')) : undefined;
                     const planBudget = Number.isFinite(storedBudget) && storedBudget > 0 ? storedBudget : Number.isFinite(alternatePlanBudget) && alternatePlanBudget > 0 ? alternatePlanBudget : Number(legacyPlanMeta?.[2] ?? descriptionPlanBudget ?? storedBudget ?? 0);
-                    products.push({ reference: null, planId, planBudget, product: { productName: plan.planName, price, type: 'plan' }, quantity, stock: 0, itemType: 'plan', planItems });
+                    products.push({ reference: null, planId, planType: plan.planType || 'products', planBudget, product: { productName: plan.planName, price, type: 'plan' }, quantity, stock: 0, itemType: 'plan', planItems });
                     continue;
                 }
                 const reference = firestore.collection('products').doc(productId);
@@ -212,7 +205,7 @@ export async function createPurchase(req, res, next) {
             }
             const items = [];
             let total = 0;
-            for (const { reference, product, quantity, stock, planItems, itemType, planId, planBudget } of products) {
+            for (const { reference, product, quantity, stock, planItems, itemType, planId, planType, planBudget } of products) {
                 const price = Number(product.price || 0);
                 const requested = data.items.find((item) => item.productId === (planId ? `plan:${planId}` : reference?.id ? `customer-product:${reference.id}` : reference?.id));
                 const estimatedTotal = planItems ? planItems.reduce((sum, item) => sum + Number(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0)), 0) : price;
@@ -223,7 +216,7 @@ export async function createPurchase(req, res, next) {
                 const actualPlanTotal = includedItems?.reduce((sum, item) => sum + item.actualSubtotal, 0);
                 const subtotal = (actualPlanTotal ?? price) * quantity;
                 total += subtotal;
-                items.push({ productId: reference?.id || planId || null, itemType: itemType || product.type, productName: product.productName, quantity, price: actualPlanTotal ?? price, subtotal, ...(planItems ? { estimatedTotal, planBudget, includedItems } : {}) });
+                items.push({ productId: reference?.id || planId || null, itemType: itemType || product.type, ...(planItems ? { planType: planType || 'products', estimatedTotal, planBudget, includedItems } : {}), productName: product.productName, quantity, price: actualPlanTotal ?? price, subtotal });
                 if (reference && product.type === 'product') transaction.update(reference, { stockQuantity: stock - quantity, updatedAt: timestamp() });
             }
             const value = { customerId, customerName, processedBy: req.profile.fullName || req.user.email || 'User', userId: req.user.uid, totalAmount: total, amountPaid: 0, balanceAmount: total, paymentStatus: total ? 'unpaid' : 'paid', purchaseDate: data.purchaseDate, remarks: data.remarks, items, createdAt: timestamp() };
@@ -296,7 +289,7 @@ export async function receipt(req, res, next) {
     try {
         const snapshot = await firestore.collection('purchases').doc(parse(idSchema, req.params).id).get();
         if (!snapshot.exists) fail('Purchase record not found.', 404);
-        const purchase = await purchaseWithProcessorName({ id: snapshot.id, ...snapshot.data() }, req.profile.fullName || req.user.email || '—');
+        const purchase = { id: snapshot.id, ...snapshot.data() };
         const pdf = await purchaseReceiptPdf(purchase);
         res.type('application/pdf').set('Content-Disposition', `inline; filename="purchase-${snapshot.id}.pdf"`).send(pdf);
     } catch (error) { next(error); }
