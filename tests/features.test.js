@@ -392,7 +392,7 @@ test('customer payments allow purchases linked to one of their saved contacts', 
 
 test('purchase transactions include the requested columns', () => {
     assert.deepEqual(purchases.columns.map(([, label]) => label), [
-        'ID', 'Customer', 'Processed By', 'Total Amount', 'Amount Paid', 'Balance', 'Status', 'Purchase Date'
+        'ID', 'User', 'Total Amount', 'Amount Paid', 'Balance', 'Status', 'Purchase Date'
     ]);
 });
 

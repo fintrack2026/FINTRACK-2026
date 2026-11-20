@@ -1,7 +1,7 @@
 export const purchases = {
     title: 'Purchase Transactions',
     description: 'Track customer purchases, balances, and stock changes.',
-    columns: [['id', 'ID'], ['customerName', 'Customer'], ['processedBy', 'Processed By'], ['totalAmount', 'Total Amount'], ['amountPaid', 'Amount Paid'], ['balanceAmount', 'Balance'], ['paymentStatus', 'Status'], ['purchaseDate', 'Purchase Date']],
+    columns: [['id', 'ID'], ['customerName', 'User'], ['totalAmount', 'Total Amount'], ['amountPaid', 'Amount Paid'], ['balanceAmount', 'Balance'], ['paymentStatus', 'Status'], ['purchaseDate', 'Purchase Date']],
     async fields({ state, fieldMarkup, optionList, purchaseLineMarkup }) {
         return `<div class="field"><label for="purchase-customer">Customer</label><select id="purchase-customer" name="customerId" required>${optionList(state.records.customers, 'id', 'customerName', '', 'Select customer')}</select></div>
             ${fieldMarkup(['purchaseDate', 'Purchase date', 'date', true], new Date().toISOString().slice(0, 10))}
