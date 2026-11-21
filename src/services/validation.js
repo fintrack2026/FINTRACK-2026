@@ -16,6 +16,7 @@ export const customerPlanSchema = z.object({
     items: z.array(z.object({
         itemName: z.string().trim().min(1).max(150),
         quantity: z.coerce.number().int().positive().optional(),
+        unit: z.string().trim().min(1).max(20).optional(),
         estimatedPrice: z.coerce.number().finite().min(0)
     }).strict()).min(1).max(50)
 }).strict()

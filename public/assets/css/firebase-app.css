@@ -151,12 +151,12 @@ button { cursor: pointer; }
 .purchase-view-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .customer-plan-items { display: grid; gap: 8px; }
 .customer-plan-basics { display: grid; grid-template-columns: 1.2fr repeat(3, minmax(0, 1fr)); gap: 12px; }
-.customer-plan-item, .customer-plan-item-header { display: grid; grid-template-columns: minmax(0, 1fr) 68px 126px 126px 34px; gap: 8px; align-items: center; }
+.customer-plan-item, .customer-plan-item-header { display: grid; grid-template-columns: minmax(96px, 1.2fr) 50px 90px minmax(88px, 1.1fr) minmax(70px, .9fr) 34px; gap: 8px; align-items: center; }
 .customer-plan-item-header { margin: 2px 0 7px; color: var(--muted); font-size: 11px; }
 .customer-plan-item-header.is-service-plan-header { grid-template-columns: minmax(0, 1fr) 126px 126px 34px; }
 .customer-plan-item.is-service-plan-item { grid-template-columns: minmax(0, 1fr) 126px 126px 34px; }
-.customer-plan-item input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid #34475f; border-radius: 6px; color: var(--ink); background: var(--field); }
-.customer-plan-item input:focus { border-color: var(--green); outline: none; box-shadow: 0 0 0 3px rgba(99, 210, 192, .15); }
+.customer-plan-item input, .customer-plan-item select { width: 100%; min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid #34475f; border-radius: 6px; color: var(--ink); background: var(--field); }
+.customer-plan-item input:focus, .customer-plan-item select:focus { border-color: var(--green); outline: none; box-shadow: 0 0 0 3px rgba(99, 210, 192, .15); }
 .customer-plan-item [data-item-subtotal] { color: var(--ink); font-size: 12px; text-align: right; white-space: nowrap; }
 .customer-plan-item .small-button { width: 34px; height: 34px; padding: 0; font-size: 16px; }
 .customer-plan-add { justify-self: start; min-height: 32px; margin-top: 8px; }
@@ -747,15 +747,18 @@ button.payment-method-card { cursor: pointer; }
     .customer-purchase-items-field.services-only .customer-purchase-line-header { grid-template-columns: minmax(0, 1fr) 68px 34px; }
     .customer-purchase-items-field.services-only .customer-purchase-line-header span:nth-child(2) { display: none; }
     .customer-plan-basics, .customer-plan-summary { grid-template-columns: 1fr; }
-    .customer-plan-item, .customer-plan-item-header { grid-template-columns: minmax(0, 1fr) 68px 34px; }
+    .customer-plan-item, .customer-plan-item-header { grid-template-columns: minmax(70px, 1fr) 92px minmax(70px, 1fr) 34px; }
     .customer-plan-item-header { display: none; }
-    .customer-plan-item.is-service-plan-item { grid-template-columns: minmax(0, 1fr) 68px 34px; }
+    .customer-plan-item.is-service-plan-item { grid-template-columns: minmax(0, 1fr) 34px; }
     .customer-plan-item [name="itemName"] { grid-column: 1 / -1; grid-row: 1; }
     .customer-plan-item [name="itemQuantity"] { grid-column: 1; grid-row: 2; }
-    .customer-plan-item [name="itemPrice"] { grid-column: 2; grid-row: 2; }
-    .customer-plan-item.is-service-plan-item [name="itemPrice"] { grid-column: 1 / 3; }
-    .customer-plan-item [data-item-subtotal] { grid-column: 1 / 3; grid-row: 3; text-align: left; }
-    .customer-plan-item .small-button { grid-column: 3; grid-row: 3; }
+    .customer-plan-item [name="unit"] { grid-column: 2; grid-row: 2; }
+    .customer-plan-item [name="itemPrice"] { grid-column: 3; grid-row: 2; }
+    .customer-plan-item.is-service-plan-item [name="itemPrice"] { grid-column: 1 / 3; grid-row: 2; }
+    .customer-plan-item [data-item-subtotal] { grid-column: 1 / 4; grid-row: 3; text-align: left; }
+    .customer-plan-item.is-service-plan-item [data-item-subtotal] { grid-column: 1; }
+    .customer-plan-item .small-button { grid-column: 4; grid-row: 3; }
+    .customer-plan-item.is-service-plan-item .small-button { grid-column: 2; }
 }
 
 @media (max-width: 380px) {

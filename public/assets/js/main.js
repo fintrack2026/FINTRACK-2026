@@ -6,6 +6,7 @@ import { expenseCategories, expenses } from './features/expenses.js';
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from './features/payments.js';
 import { products } from './features/products.js';
 import { purchases } from './features/purchases.js';
+import { legacyMeasurementUnitItemName, measurementUnitOptions, normalizeMeasurementUnitItem } from './features/measurement-units.js';
 import { renderReports } from './features/reports.js';
 
 const authScreen = document.querySelector('#auth-screen');
@@ -484,7 +485,8 @@ function normalizeCustomerPlan(plan) {
     const description = String(plan.description || '');
     const legacyMeta = /^FINTRACK_PLAN_V1\|([^|]+)\|([\d.]+)$/.exec(description);
     const descriptionBudget = /(?:budget|limit)\s*[:=\-]\s*(?:₱|PHP\s*)?([\d,]+(?:\.\d+)?)/i.exec(description);
-    const items = (plan.items || []).map((item) => {
+    const items = (plan.items || []).map((savedItem) => {
+        const item = normalizeMeasurementUnitItem(savedItem);
         const quantity = Number(item.quantity || 0);
         const estimatedPrice = Number(item.estimatedPrice ?? item.price ?? 0);
         return { ...item, estimatedPrice, subtotal: Number(item.subtotal ?? quantity * estimatedPrice) };
@@ -541,7 +543,7 @@ async function renderCustomerCatalog(filter = state.customerPlanFilter) {
             const state = plan.state === 'inactive' ? 'inactive' : 'active';
             const itemRows = type === 'services'
                 ? `<div class="plan-items-preview service-plan-preview"><div class="plan-items-preview-head"><span>Service / bill</span><span>Estimated amount</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><strong>${money(item.subtotal ?? item.estimatedPrice ?? item.price)}</strong></div>`).join('')}</div>`
-                : `<div class="plan-items-preview"><div class="plan-items-preview-head"><span>Item</span><span>Qty</span><span>Estimated</span><span>Subtotal</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><span>${Number(item.quantity)}</span><span>${money(item.estimatedPrice ?? item.price)}</span><strong>${money(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0))}</strong></div>`).join('')}</div>`;
+                : `<div class="plan-items-preview"><div class="plan-items-preview-head"><span>Item</span><span>Qty / unit</span><span>Estimated</span><span>Subtotal</span></div>${items.map((item) => `<div class="plan-items-preview-row"><span title="${escapeHtml(item.itemName)}">${escapeHtml(item.itemName)}</span><span>${Number(item.quantity)}${item.unit ? ` ${escapeHtml(item.unit)}` : ''}</span><span>${money(item.estimatedPrice ?? item.price)}</span><strong>${money(item.subtotal ?? Number(item.quantity || 0) * Number(item.estimatedPrice ?? item.price ?? 0))}</strong></div>`).join('')}</div>`;
             return `<tr><td data-label="Plan"><strong>${escapeHtml(plan.planName)}</strong></td><td data-label="Date">${shortDate(planDate)}</td><td data-label="Items">${itemRows}</td><td data-label="Budget">${hasBudget ? money(budget) : '—'}</td><td data-label="Estimated total">${money(estimatedTotal)}</td><td data-label="Remaining">${hasBudget ? money(remaining) : '—'}</td><td data-label="State"><button class="plan-state-toggle ${state === 'active' ? 'is-active' : 'is-inactive'}" type="button" data-action="customer-plan-toggle" data-id="${escapeHtml(plan.id)}" data-state="${state === 'active' ? 'inactive' : 'active'}" aria-label="Set ${escapeHtml(plan.planName)} ${state === 'active' ? 'inactive' : 'active'}" title="Click to set ${state === 'active' ? 'inactive' : 'active'}">${state === 'active' ? 'Active' : 'Inactive'}</button></td><td data-label="Budget status">${hasBudget ? `<span class="plan-budget-status ${status === 'OVER BUDGET' ? 'is-over' : status === 'ON BUDGET' ? 'is-even' : ''}">${escapeHtml(status)}</span>` : '—'}</td><td data-label="Actions"><div class="row-actions"><button class="small-button catalog-icon-button" type="button" data-action="customer-plan-edit" data-id="${escapeHtml(plan.id)}" aria-label="Edit ${escapeHtml(plan.planName)}" title="Edit"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.5-1 10-10a2.12 2.12 0 0 0-3-3l-10 10L4 20Z"/></svg></button><button class="small-button delete catalog-icon-button" type="button" data-action="customer-plan-delete" data-id="${escapeHtml(plan.id)}" aria-label="Delete ${escapeHtml(plan.planName)}" title="Delete plan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3"/></svg></button></div></td></tr>`;
         }).join('');
         const content = rows
@@ -642,6 +644,7 @@ async function renderCustomerExpenses(from, to) {
 
 async function renderCustomerRecords(filter = state.customerRecordFilter, refresh = true, from, to, restoreSearchFocus = false) {
     const selection = setCustomerDateSelection(from, to);
+    if (filter === 'payments') filter = 'expenses';
     state.customerRecordFilter = filter;
     if (refresh || !state.customerRecordData) state.customerRecordData = await apiFetch('/customer/records');
     const budgetMonth = state.customerBudgetMonth || monthKey(new Date());
@@ -682,8 +685,7 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
     const filters = [
         { id: 'all', label: 'All', count: records.length, rows: records },
         { id: 'purchases', label: 'Purchases', count: purchaseRows.length, rows: purchaseRows },
-        { id: 'payments', label: 'Payments', count: paymentRows.length, rows: paymentRows },
-        { id: 'expenses', label: 'Expenses', count: expenseRows.length, rows: expenseRows },
+        { id: 'expenses', label: 'Expenses', count: paymentRows.length, rows: paymentRows },
         { id: 'outstanding', label: 'Outstanding', count: outstanding.length, rows: outstanding }
     ];
     const selected = filters.find((item) => item.id === filter) || filters[0];
@@ -691,7 +693,7 @@ async function renderCustomerRecords(filter = state.customerRecordFilter, refres
     const visibleRows = needle ? selected.rows.filter((record) => [record.date, record.type, record.description, record.detail, record.amount, record.status].some((value) => String(value ?? '').toLowerCase().includes(needle))) : selected.rows;
     const table = visibleRows.length ? customerRecordTable(visibleRows) : emptyState(needle ? 'No matching records' : `No ${selected.label.toLowerCase()} yet`, needle ? 'Try a different search term.' : 'New records will appear here.');
     viewContainer.innerHTML = `<div class="print-record-heading"><h2>FinTrack · All records</h2><p>${selected.label} · ${shortDate(selection.from)} – ${shortDate(selection.to)}${needle ? ` · Search: ${escapeHtml(state.customerRecordSearch)}` : ''} · ${visibleRows.length} records</p></div>
-        <div class="view-heading"><div><h2>All records</h2><p>Every purchase stays listed with its payment status. Payments and paid expenses are shown separately.</p></div><div class="transaction-filters customer-record-filters">${customerDateRangeFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
+        <div class="view-heading"><div><h2>All records</h2><p>Every purchase stays listed with its payment status. Paid purchases are listed under Expenses.</p></div><div class="transaction-filters customer-record-filters">${customerDateRangeFilter(selection)}<button class="small-button record-print-button customer-record-print-button" type="button" data-action="print-customer-records" aria-label="Print all records as PDF" title="Print all records as PDF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5h-2M7 14h10v7H7zM18 11h.01"/></svg></button></div></div>
         <div class="customer-record-charts customer-record-budget-chart"><section class="panel chart-panel"><div class="panel-header"><div><h3>Allocated Budget and Expenses</h3><p>Paid expenses against ${escapeHtml(budgetMonthLabel)} budget</p></div><span class="record-count">${money(budget.amount)} allocated</span></div><div class="customer-record-chart-canvas"><canvas id="customer-record-budget-chart" role="img" aria-label="Pie chart showing paid expenses and remaining monthly budget"></canvas></div></section></div>
         <div class="metrics customer-metrics record-overview-metrics">${metric('Total purchases', money(purchaseTotal), `${purchases.length} ${purchases.length === 1 ? 'purchase record' : 'purchase records'}`, '↗')}${metric('Total paid expenses', money(paidExpenseTotal), `${paymentRows.length + expenseRows.length} paid records`, '✓')}${metric('Unpaid purchases', money(outstandingTotal), 'Remaining across purchases', '₱')}</div>
         <section class="panel record-browser"><div class="record-filters" role="group" aria-label="Filter records">${filters.map((item) => `<button class="record-filter${item.id === selected.id ? ' is-active' : ''}" type="button" aria-pressed="${item.id === selected.id}" data-action="customer-record-filter" data-filter="${item.id}">${item.label}<span>${item.count}</span></button>`).join('')}<input type="search" id="customer-record-search" placeholder="Search records" value="${escapeHtml(state.customerRecordSearch)}" aria-label="Search ${selected.label.toLowerCase()} records"></div><div class="panel-header"><h3>${selected.label}</h3><span class="record-count">${needle ? `${visibleRows.length} of ` : ''}${selected.rows.length} ${selected.rows.length === 1 ? 'record' : 'records'}</span></div>${table}</section>`;
@@ -971,7 +973,7 @@ function updateCustomerPurchasePlanDetails(line) {
     panel.innerHTML = `<div class="purchase-plan-title"><strong>${escapeHtml(plan.planName)} items</strong></div><div class="purchase-plan-header${servicePlanHeader ? ' is-service-plan-header' : ''}">${servicePlanHeader ? '<span>Service / bill</span><span>Estimated</span><span>Actual</span>' : '<span>Item</span><span>Qty</span><span>Estimated</span><span>Actual</span>'}</div>${items.map((item, index) => {
         const quantity = servicePlanHeader ? 1 : Number(item.quantity || 0);
         const estimated = Number(item.subtotal ?? quantity * Number(item.estimatedPrice ?? item.price ?? 0));
-        return `<div class="purchase-plan-item${servicePlanHeader ? ' is-service-plan-item' : ''}" data-estimated-subtotal="${estimated}"><span>${escapeHtml(item.itemName || 'Item')}</span>${servicePlanHeader ? '' : `<span>${quantity}</span>`}<span>${money(estimated)}</span><input class="plan-actual-price" type="number" min="0" step="0.01" value="${estimated}" data-item-index="${index}" aria-label="Actual amount for ${escapeHtml(item.itemName || 'item')}"></div>`;
+        return `<div class="purchase-plan-item${servicePlanHeader ? ' is-service-plan-item' : ''}" data-estimated-subtotal="${estimated}"><span>${escapeHtml(item.itemName || 'Item')}</span>${servicePlanHeader ? '' : `<span>${quantity}${item.unit ? ` ${escapeHtml(item.unit)}` : ''}</span>`}<span>${money(estimated)}</span><input class="plan-actual-price" type="number" min="0" step="0.01" value="${estimated}" data-item-index="${index}" aria-label="Actual amount for ${escapeHtml(item.itemName || 'item')}"></div>`;
     }).join('')}<div class="purchase-plan-summary"><span>Estimated total <strong data-plan-estimated>${money(planEstimatedTotal)}</strong></span><span>Budget <strong data-plan-budget>${money(planMoneyValue(plan.budget) ?? 0)}</strong></span><span>Actual total <strong data-plan-actual-total>${money(planEstimatedTotal)}</strong></span><span>Remaining <strong data-plan-actual-remaining>${money((planMoneyValue(plan.budget) ?? 0) - planEstimatedTotal)}</strong></span><strong class="plan-budget-status" data-plan-actual-status>UNDER BUDGET</strong></div>`;
     updateCustomerPurchaseTotal();
 }
@@ -992,16 +994,18 @@ function openCustomerProductForm(product = null) {
 function customerPlanItemHeaderMarkup(planType) {
     return planType === 'services'
         ? '<span>Service / bill</span><span>Estimated amount</span><span>Subtotal</span><span></span>'
-        : '<span>Item</span><span>Qty</span><span>Estimated price</span><span>Subtotal</span><span></span>';
+        : '<span>Item</span><span>Qty</span><span>Unit</span><span>Estimated price</span><span>Subtotal</span><span></span>';
 }
 
 function customerPlanItemMarkup(item = {}, planType = 'products') {
     const itemName = escapeHtml(item.itemName || '');
     const quantity = Number(item.quantity || 1);
+    const unit = String(item.unit || 'pcs');
     const price = Number(item.estimatedPrice ?? item.price ?? 0);
     const services = planType === 'services';
     const quantityInput = services ? '' : `<input name="itemQuantity" type="number" min="1" step="1" value="${quantity}" aria-label="Quantity" required>`;
-    return `<div class="customer-plan-item${services ? ' is-service-plan-item' : ''}"><input name="itemName" type="text" placeholder="${services ? 'Service or bill name' : 'Item'}" aria-label="${services ? 'Service or bill name' : 'Item name'}" maxlength="150" value="${itemName}" required>${quantityInput}<input name="itemPrice" type="number" min="0" step="0.01" value="${price}" placeholder="${services ? 'Estimated amount' : ''}" aria-label="${services ? 'Estimated bill amount' : 'Estimated price'}" required><strong data-item-subtotal>${money((services ? 1 : quantity) * price)}</strong><button class="small-button delete" type="button" data-action="remove-customer-plan-item" aria-label="Remove item" title="Remove item">×</button></div>`;
+    const unitInput = services ? '' : `<select name="unit" aria-label="Quantity unit">${measurementUnitOptions(unit)}</select>`;
+    return `<div class="customer-plan-item${services ? ' is-service-plan-item' : ''}"><input name="itemName" type="text" placeholder="${services ? 'Service or bill name' : 'Item'}" aria-label="${services ? 'Service or bill name' : 'Item name'}" maxlength="150" value="${itemName}" required>${quantityInput}${unitInput}<input name="itemPrice" type="number" min="0" step="0.01" value="${price}" placeholder="${services ? 'Estimated amount' : ''}" aria-label="${services ? 'Estimated bill amount' : 'Estimated price'}" required><strong data-item-subtotal>${money((services ? 1 : quantity) * price)}</strong><button class="small-button delete" type="button" data-action="remove-customer-plan-item" aria-label="Remove item" title="Remove item">×</button></div>`;
 }
 
 function updateCustomerPlanType(form) {
@@ -1009,6 +1013,7 @@ function updateCustomerPlanType(form) {
     const items = [...form.querySelectorAll('.customer-plan-item')].map((item) => ({
         itemName: item.querySelector('[name="itemName"]').value,
         quantity: Number(item.querySelector('[name="itemQuantity"]')?.value || 1),
+        unit: item.querySelector('[name="unit"]')?.value || 'pcs',
         estimatedPrice: Number(item.querySelector('[name="itemPrice"]').value)
     }));
     const header = form.querySelector('.customer-plan-item-header');
@@ -1317,6 +1322,7 @@ async function saveRecord(form) {
         const items = [...form.querySelectorAll('.customer-plan-item')].map((item) => ({
             itemName: item.querySelector('[name="itemName"]').value.trim(),
             ...(planType === 'services' ? {} : { quantity: Number(item.querySelector('[name="itemQuantity"]').value) }),
+            ...(planType === 'services' ? {} : { unit: item.querySelector('[name="unit"]').value }),
             estimatedPrice: Number(item.querySelector('[name="itemPrice"]').value)
         }));
         const plan = { planName: String(formData.get('planName') || '').trim(), planType, planDate: formData.get('planDate'), budget: Number(formData.get('budget')), state: formData.get('state') || 'active', items };
@@ -1325,11 +1331,23 @@ async function saveRecord(form) {
         try {
             return await apiFetch(path, { method, body: JSON.stringify(plan) });
         } catch (error) {
-            if (planType !== 'products') throw error;
-            if (!/Unrecognized key|received nan/i.test(error.message || '')) throw error;
-            const legacyItems = items.map(({ itemName, quantity, estimatedPrice }) => ({ itemName, quantity, price: estimatedPrice }));
+            if (!['products', 'groceries'].includes(planType)) throw error;
+            const errorMessage = error.message || '';
+            if (/Unrecognized key\(s\) in object: 'unit'/i.test(errorMessage)) {
+                const compatiblePlan = {
+                    ...plan,
+                    items: items.map(({ itemName, quantity, unit, estimatedPrice }) => ({
+                        itemName: legacyMeasurementUnitItemName(itemName, unit),
+                        quantity,
+                        estimatedPrice
+                    }))
+                };
+                return apiFetch(path, { method, body: JSON.stringify(compatiblePlan) });
+            }
+            if (!/Unrecognized key|received nan/i.test(errorMessage)) throw error;
+            const legacyItems = items.map(({ itemName, quantity, unit, estimatedPrice }) => ({ itemName: legacyMeasurementUnitItemName(itemName, unit), quantity, price: estimatedPrice }));
             const totalPrice = legacyItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
-            const legacyPlan = { planName: plan.planName, description: `FINTRACK_PLAN_V1|${plan.planDate}|${plan.budget}`, items: legacyItems, totalPrice };
+            const legacyPlan = { planName: plan.planName, planType, description: `FINTRACK_PLAN_V1|${plan.planDate}|${plan.budget}`, items: legacyItems, totalPrice };
             return apiFetch(path, { method, body: JSON.stringify(legacyPlan) });
         }
     }
@@ -1412,10 +1430,11 @@ function showCustomerPurchase(id) {
         const budget = Number(item.planBudget || 0);
         const remaining = budget - planActualTotal;
         const budgetStatus = remaining > 0.009 ? 'UNDER BUDGET' : remaining < -0.009 ? 'OVER BUDGET' : 'ON BUDGET';
-        const planItems = includedItems.length ? `<div class="purchase-detail-plan"><strong>Plan items</strong>${includedItems.map((included) => {
+        const planItems = includedItems.length ? `<div class="purchase-detail-plan"><strong>Plan items</strong>${includedItems.map((savedIncluded) => {
+            const included = normalizeMeasurementUnitItem(savedIncluded);
             const estimated = Number(included.estimatedSubtotal ?? included.subtotal ?? Number(included.quantity || 0) * Number(included.estimatedPrice ?? included.price ?? 0));
             const actual = Number(included.actualSubtotal ?? estimated);
-            return `<div class="report-line purchase-actual-detail"><span>${escapeHtml(included.itemName || 'Item')} × ${Number(included.quantity || 0)}<small>Estimated ${money(estimated)}</small></span><strong>${money(actual)}</strong></div>`;
+            return `<div class="report-line purchase-actual-detail"><span>${escapeHtml(included.itemName || 'Item')} × ${Number(included.quantity || 0)}${included.unit ? ` ${escapeHtml(included.unit)}` : ''}<small>Estimated ${money(estimated)}</small></span><strong>${money(actual)}</strong></div>`;
         }).join('')}<div class="purchase-plan-summary"><span>Estimated total <strong>${money(item.estimatedTotal ?? 0)}</strong></span><span>Budget <strong>${money(budget)}</strong></span><span>Actual total <strong>${money(planActualTotal * Number(item.quantity || 1))}</strong></span><span>Remaining <strong>${money(remaining)}</strong></span><strong class="plan-budget-status ${budgetStatus === 'OVER BUDGET' ? 'is-over' : budgetStatus === 'ON BUDGET' ? 'is-even' : ''}">${budgetStatus}</strong></div></div>` : '';
         return `<div class="report-line"><span>${escapeHtml(item.productName)} × ${Number(item.quantity)}</span><strong>${money(item.subtotal)}</strong></div>${planItems}`;
     }).join('');
@@ -1431,7 +1450,7 @@ async function showPurchaseReceipt(id, customer = false) {
     try {
         const token = await state.user.getIdToken();
         const receiptPath = customer ? `/api/customer/purchases/${encodeURIComponent(id)}/receipt` : `/api/purchases/${encodeURIComponent(id)}/receipt`;
-        const response = await fetch(receiptPath, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(receiptPath, { cache: 'no-store', headers: { Authorization: `Bearer ${token}` } });
         if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Could not load the receipt.');
         const pdfUrl = URL.createObjectURL(await response.blob());
         receiptWindow.location.replace(pdfUrl);

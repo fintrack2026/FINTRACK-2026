@@ -28,6 +28,17 @@ export function purchaseStockItems(items = []) {
     return [...quantities.values()];
 }
 
+export function normalizeReceiptPlanItem(item) {
+    const itemName = String(item.itemName || '');
+    const legacyUnit = /\s+\[FINTRACK_UNIT:([^\]]+)\]$/.exec(itemName);
+    if (!legacyUnit) return item;
+    return {
+        ...item,
+        itemName: itemName.slice(0, legacyUnit.index),
+        unit: item.unit || legacyUnit[1]
+    };
+}
+
 export function purchaseReceiptPdf(purchase) {
     return new Promise((resolve, reject) => {
         const items = purchase.items || [];
@@ -84,7 +95,8 @@ export function purchaseReceiptPdf(purchase) {
             if (item.includedItems?.length) {
                 document.font('Helvetica-Bold').fontSize(7).fillColor('#667586').text('INCLUDED ITEMS', left + 5, y);
                 y += 11;
-                for (const included of item.includedItems) {
+                for (const savedIncluded of item.includedItems) {
+                    const included = normalizeReceiptPlanItem(savedIncluded);
                     const includedName = String(included.itemName || 'Item');
                     const quantity = (item.planType === 'services' ? 1 : Number(included.quantity) || 0) * (Number(item.quantity) || 1);
                     const unitPrice = Number(included.estimatedPrice ?? included.price ?? 0);
@@ -96,7 +108,7 @@ export function purchaseReceiptPdf(purchase) {
                     document.font('Helvetica-Bold').fontSize(8).fillColor('#263445').text(formatAmount(subtotal), left + contentWidth - 60, y, { width: 60, align: 'right' });
                     const pricingDetail = item.planType === 'services'
                         ? `Estimated ${formatAmount(estimatedSubtotal)}  ·  Actual ${formatAmount(subtotal)}`
-                        : `Estimated ${formatAmount(estimatedSubtotal)}  ·  Actual ${formatAmount(subtotal)}  ·  ${quantity} x ${formatAmount(unitPrice)}`;
+                        : `Estimated ${formatAmount(estimatedSubtotal)}  ·  Actual ${formatAmount(subtotal)}  ·  ${quantity}${included.unit ? ` ${included.unit}` : ''} x ${formatAmount(unitPrice)}`;
                     document.font('Helvetica').fontSize(7).fillColor('#667586').text(pricingDetail, left + 5, y + Math.max(10, includedNameHeight));
                     y += Math.max(25, includedNameHeight + 13);
                 }
@@ -291,6 +303,6 @@ export async function receipt(req, res, next) {
         if (!snapshot.exists) fail('Purchase record not found.', 404);
         const purchase = { id: snapshot.id, ...snapshot.data() };
         const pdf = await purchaseReceiptPdf(purchase);
-        res.type('application/pdf').set('Content-Disposition', `inline; filename="purchase-${snapshot.id}.pdf"`).send(pdf);
+        res.type('application/pdf').set('Cache-Control', 'no-store').set('Content-Disposition', `inline; filename="purchase-${snapshot.id}.pdf"`).send(pdf);
     } catch (error) { next(error); }
 }

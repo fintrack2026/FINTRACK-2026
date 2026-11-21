@@ -502,7 +502,7 @@ export async function customerPurchaseReceipt(req, res, next) {
         if (!customerOwnsPurchaseRecord(req.user.uid, customerId, purchase, contact)) fail('Purchase transaction not found.', 404);
         purchase = { id: snapshot.id, ...purchase };
         const pdf = await purchaseReceiptPdf(purchase);
-        res.type('application/pdf').set('Content-Disposition', `inline; filename="purchase-${snapshot.id}.pdf"`).send(pdf);
+        res.type('application/pdf').set('Cache-Control', 'no-store').set('Content-Disposition', `inline; filename="purchase-${snapshot.id}.pdf"`).send(pdf);
     } catch (error) { next(error); }
 }
 

@@ -7,7 +7,8 @@ import { expenseCategories, expenses } from '../public/assets/js/features/expens
 import { paymentMethodCardsMarkup, paymentMethods, payments, summarizePaymentMethods } from '../public/assets/js/features/payments.js';
 import { products } from '../public/assets/js/features/products.js';
 import { purchases } from '../public/assets/js/features/purchases.js';
-import { customerOwnsContact, purchaseReceiptPdf, purchaseStockItems } from '../src/controllers/purchases.js';
+import { legacyMeasurementUnitItemName, measurementUnitOptions, measurementUnits, normalizeMeasurementUnitItem } from '../public/assets/js/features/measurement-units.js';
+import { customerOwnsContact, normalizeReceiptPlanItem, purchaseReceiptPdf, purchaseStockItems } from '../src/controllers/purchases.js';
 import { customerOwnsExpenseRecord, customerOwnsPaymentRecord, customerOwnsPurchaseRecord } from '../src/controllers/customer-portal.js';
 import { renderReports } from '../public/assets/js/features/reports.js';
 import { customerOwnsPurchase, paymentTotalsAfterChange } from '../src/controllers/payments.js';
@@ -126,6 +127,14 @@ test('customer plans require quantities for products and groceries but not servi
         assert.equal(customerPlanSchema.safeParse({ ...basePlan, planType }).success, false);
         assert.equal(customerPlanSchema.safeParse({ ...basePlan, planType, items: [{ ...basePlan.items[0], quantity: 2 }] }).success, true);
     }
+    const measuredPlan = customerPlanSchema.parse({ ...basePlan, items: [{ itemName: 'Flour', quantity: 2, unit: 'kg', estimatedPrice: 5 }] });
+    assert.equal(measuredPlan.items[0].unit, 'kg');
+    assert.ok(measurementUnits.some(([unit]) => unit === 'in'));
+    assert.ok(measurementUnits.some(([unit]) => unit === 'ft'));
+    assert.match(measurementUnitOptions('kg'), /value="kg" selected/);
+    const legacyItem = { itemName: legacyMeasurementUnitItemName('Rice', 'kg'), quantity: 5, price: 200 };
+    assert.deepEqual(normalizeMeasurementUnitItem(legacyItem), { itemName: 'Rice', quantity: 5, price: 200, unit: 'kg' });
+    assert.deepEqual(normalizeReceiptPlanItem(legacyItem), { itemName: 'Rice', quantity: 5, price: 200, unit: 'kg' });
     assert.equal(customerPlanSchema.safeParse({ ...basePlan, items: [{ ...basePlan.items[0], quantity: 1 }] }).data.planType, 'products');
 });
 
